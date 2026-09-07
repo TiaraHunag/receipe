@@ -8,12 +8,12 @@ import DishDetailPage from './pages/DishDetailPage';
 import MenuPage from './pages/MenuPage';
 import { initDB } from './db';
 
-useEffect(() => {
-  initDB().catch((err) => console.error('資料庫初始化失敗', err));
-}, []);
-
 function App() {
   const { user, loading, logout } = useAuth();
+
+  useEffect(() => {
+    initDB().catch((err) => console.error('資料庫初始化失敗', err));
+  }, []);
 
   if (loading) return <div style={{ padding: 20 }}>載入中...</div>;
 
