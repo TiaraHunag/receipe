@@ -1,58 +1,40 @@
-import { useEffect, useState } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './AuthContext';
+import LoginPage from './pages/LoginPage';
+import DishListPage from './pages/DishListPage';
+import DishFormPage from './pages/DishFormPage';
+import DishDetailPage from './pages/DishDetailPage';
+import MenuPage from './pages/MenuPage';
+import { initDB } from './db';
 
-interface Dish {
-  id: string;
-  name: string;
-  category?: string[];
-  ingredients?: string[];
-}
+useEffect(() => {
+  initDB().catch((err) => console.error('資料庫初始化失敗', err));
+}, []);
 
 function App() {
-  const [dishes, setDishes] = useState<Dish[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { user, loading, logout } = useAuth();
 
-  useEffect(() => {
-    const fetchDishes = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, 'dishes'));
-        const results: Dish[] = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Dish[];
-        setDishes(results);
-      } catch (err) {
-        setError(String(err));
-      } finally {
-        setLoading(false);
-      }
-    };
+  if (loading) return <div style={{ padding: 20 }}>載入中...</div>;
 
-    fetchDishes();
-  }, []);
-
-  if (loading) return <div style={{ padding: 20 }}>讀取中...</div>;
-  if (error)
-    return <div style={{ padding: 20, color: 'red' }}>錯誤:{error}</div>;
+  if (!user) {
+    return <LoginPage />;
+  }
 
   return (
-    <div style={{ padding: 20, fontFamily: 'sans-serif' }}>
-      <h1>食譜列表(測試)</h1>
-      {dishes.length === 0 ? (
-        <p>目前沒有資料</p>
-      ) : (
-        <ul>
-          {dishes.map((dish) => (
-            <li key={dish.id}>
-              <strong>{dish.name}</strong>
-              {dish.category && `(${dish.category.join(', ')})`}
-              {dish.ingredients && ` — 食材:${dish.ingredients.join('、')}`}
-            </li>
-          ))}
-        </ul>
-      )}
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 20px', background: '#f5f5f5' }}>
+        <span style={{ marginRight: 12, fontSize: 14, color: '#666' }}>{user.email}</span>
+        <button type="button" onClick={logout} style={{ fontSize: 14 }}>登出</button>
+      </div>
+      <Routes>
+        <Route path="/" element={<DishListPage />} />
+        <Route path="/new" element={<DishFormPage />} />
+        <Route path="/edit/:id" element={<DishFormPage />} />
+        <Route path="/dish/:id" element={<DishDetailPage />} />
+        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="/menu" element={<MenuPage />} />
+      </Routes>
     </div>
   );
 }

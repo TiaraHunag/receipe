@@ -1,11 +1,21 @@
+import { defineCustomElements as jeepSqlite } from 'jeep-sqlite/loader';
+
+jeepSqlite(window);
+
 import React from 'react';
 import ReactDOM from 'react-dom';
+import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './AuthContext';
 import App from './App';
-import 'reset.css';
+
 
 ReactDOM.render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
   </React.StrictMode>,
   document.getElementById('root')
 );
