@@ -1,0 +1,33 @@
+.fab {
+  position: fixed;
+  right: var(--space-5);
+  /* 預留底部 Tab Bar 高度 + 安全間距，實際頁面可用 CSS 變數 --tabbar-height 覆寫 */
+  bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px) + 56px);
+
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-pill);
+  border: none;
+
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: 26px;
+  line-height: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: var(--shadow-float);
+  cursor: pointer;
+  z-index: 20;
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.fab:hover {
+  background: var(--color-primary-hover);
+}
+
+.fab:active {
+  transform: scale(0.96);
+}

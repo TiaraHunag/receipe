@@ -1,20 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  getAllDishes,
-  exportDishesToJSON,
-  importDishesFromJSON,
-  getAllCategories,
-  getAllIngredients,
-  Dish,
-} from '../db';
+import { getAllDishes, getAllCategories, getAllIngredients, Dish } from '../db';
 
 function DishListPage() {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [ingredientOptions, setIngredientOptions] = useState<string[]>([]);
@@ -39,48 +30,6 @@ function DishListPage() {
     loadDishes();
   }, []);
 
-  const handleExport = async () => {
-    try {
-      const json = await exportDishesToJSON();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const dateStr = new Date().toISOString().slice(0, 10);
-      a.href = url;
-      a.download = `receipe_backup_${dateStr}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setMessage('備份檔案已下載');
-    } catch (err) {
-      setError('匯出失敗:' + String(err));
-    }
-  };
-
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!window.confirm('匯入會覆蓋內容相同(同一道菜)的資料,確定要繼續嗎?')) {
-      e.target.value = '';
-      return;
-    }
-
-    try {
-      const text = await file.text();
-      const count = await importDishesFromJSON(text);
-      setMessage(`成功匯入 ${count} 筆資料`);
-      await loadDishes();
-    } catch (err) {
-      setError('匯入失敗,請確認檔案格式是否正確:' + String(err));
-    } finally {
-      e.target.value = '';
-    }
-  };
-
   const filteredDishes = dishes.filter((dish) => {
     if (filterCategory && !dish.category.includes(filterCategory)) return false;
     if (filterIngredient && !dish.ingredients.includes(filterIngredient)) return false;
@@ -90,28 +39,8 @@ function DishListPage() {
   if (loading) return <div style={{ padding: 20 }}>讀取中...</div>;
 
   return (
-    <div style={{ padding: 20, fontFamily: 'sans-serif' }}>
-      <h1>菜色列表</h1>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <Link to="/new">
-          <button>+ 新增菜色</button>
-        </Link>
-        <Link to="/menu">
-          <button>📅 菜單規劃</button>
-        </Link>
-        <Link to="/ingredients">
-          <button>🥬 食材管理</button>
-        </Link>
-        <button type="button" onClick={handleExport}>⬇ 匯出備份</button>
-        <button type="button" onClick={handleImportClick}>⬆ 匯入還原</button>
-        <input
-          type="file"
-          accept="application/json"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          style={{ display: 'none' }}
-        />
-      </div>
+    <div style={{ padding: 16, fontFamily: 'sans-serif', maxWidth: 480, margin: '0 auto', paddingBottom: 80, position: 'relative', minHeight: '100vh' }}>
+      <h1 style={{ fontSize: 20, margin: '12px 0' }}>食譜</h1>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 14, color: '#666' }}>篩選:</span>
@@ -146,11 +75,6 @@ function DishListPage() {
         )}
       </div>
 
-      {message && (
-        <p style={{ color: 'green', background: '#eefbee', padding: 8, borderRadius: 4 }}>
-          {message}
-        </p>
-      )}
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
       {filteredDishes.length === 0 ? (
@@ -173,6 +97,53 @@ function DishListPage() {
           ))}
         </ul>
       )}
+
+<Link
+        to="/quick-add"
+        style={{
+          position: 'fixed',
+          right: 24,
+          bottom: 152,
+          width: 44,
+          height: 44,
+          borderRadius: '50%',
+          background: '#fff',
+          color: '#1a73e8',
+          fontSize: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textDecoration: 'none',
+          border: '1px solid #1a73e8',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+          zIndex: 90,
+        }}
+        title="貼上連結/文字快速新增"
+      >
+        🔗
+      </Link>
+      <Link
+        to="/new"
+        style={{
+          position: 'fixed',
+          right: 20,
+          bottom: 84,
+          width: 56,
+          height: 56,
+          borderRadius: '50%',
+          background: '#1a73e8',
+          color: '#fff',
+          fontSize: 30,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textDecoration: 'none',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.25)',
+          zIndex: 90,
+        }}
+      >
+        +
+      </Link>
     </div>
   );
 }

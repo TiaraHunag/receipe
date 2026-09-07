@@ -137,7 +137,6 @@ function DishFormPage() {
     setError(null);
 
     if (!name.trim()) { setError('請輸入菜名'); return; }
-    if (ingredients.length === 0) { setError('請至少新增一項食材'); return; }
     if (hasRecipe && content.length === 0) {
       setError('已勾選「有詳細食譜」,請至少新增一段文字或圖片內容,或取消勾選');
       return;
@@ -172,7 +171,7 @@ function DishFormPage() {
   if (loadingData) return <div style={{ padding: 20 }}>讀取中...</div>;
 
   return (
-    <div style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 600 }}>
+    <div style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 600, paddingBottom: 80 }}>
       <Link to="/">← 返回列表</Link>
       <h1>{isEditMode ? '編輯菜色' : '新增菜色'}</h1>
 

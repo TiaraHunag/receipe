@@ -175,9 +175,8 @@ function MenuPage() {
     );
 
   return (
-    <div style={{ padding: 16, fontFamily: 'sans-serif', maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ padding: 16, fontFamily: 'sans-serif', maxWidth: 480, margin: '0 auto',paddingBottom: 80 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link to="/" style={{ fontSize: 15 }}>← 返回菜色列表</Link>
         <button
           onClick={toggleEditMode}
           style={{
