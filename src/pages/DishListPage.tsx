@@ -1,6 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { getAllDishes, exportDishesToJSON, importDishesFromJSON, Dish } from '../db';
+import {
+  getAllDishes,
+  exportDishesToJSON,
+  importDishesFromJSON,
+  getAllCategories,
+  getAllIngredients,
+  Dish,
+} from '../db';
 
 function DishListPage() {
   const [dishes, setDishes] = useState<Dish[]>([]);
@@ -9,10 +16,18 @@ function DishListPage() {
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [ingredientOptions, setIngredientOptions] = useState<string[]>([]);
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterIngredient, setFilterIngredient] = useState('');
+
   const loadDishes = async () => {
     try {
       const results = await getAllDishes();
       setDishes(results);
+      const [cats, ings] = await Promise.all([getAllCategories(), getAllIngredients()]);
+      setCategoryOptions(cats);
+      setIngredientOptions(ings);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -66,6 +81,12 @@ function DishListPage() {
     }
   };
 
+  const filteredDishes = dishes.filter((dish) => {
+    if (filterCategory && !dish.category.includes(filterCategory)) return false;
+    if (filterIngredient && !dish.ingredients.includes(filterIngredient)) return false;
+    return true;
+  });
+
   if (loading) return <div style={{ padding: 20 }}>讀取中...</div>;
 
   return (
@@ -78,6 +99,9 @@ function DishListPage() {
         <Link to="/menu">
           <button>📅 菜單規劃</button>
         </Link>
+        <Link to="/ingredients">
+          <button>🥬 食材管理</button>
+        </Link>
         <button type="button" onClick={handleExport}>⬇ 匯出備份</button>
         <button type="button" onClick={handleImportClick}>⬆ 匯入還原</button>
         <input
@@ -89,6 +113,39 @@ function DishListPage() {
         />
       </div>
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 14, color: '#666' }}>篩選:</span>
+        <select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value)}
+          style={{ padding: 6 }}
+        >
+          <option value="">所有類型</option>
+          {categoryOptions.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <select
+          value={filterIngredient}
+          onChange={(e) => setFilterIngredient(e.target.value)}
+          style={{ padding: 6 }}
+        >
+          <option value="">所有食材</option>
+          {ingredientOptions.map((i) => (
+            <option key={i} value={i}>{i}</option>
+          ))}
+        </select>
+        {(filterCategory || filterIngredient) && (
+          <button
+            type="button"
+            onClick={() => { setFilterCategory(''); setFilterIngredient(''); }}
+            style={{ fontSize: 13 }}
+          >
+            清除篩選
+          </button>
+        )}
+      </div>
+
       {message && (
         <p style={{ color: 'green', background: '#eefbee', padding: 8, borderRadius: 4 }}>
           {message}
@@ -96,11 +153,11 @@ function DishListPage() {
       )}
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
-      {dishes.length === 0 ? (
-        <p>目前沒有資料</p>
+      {filteredDishes.length === 0 ? (
+        <p>{dishes.length === 0 ? '目前沒有資料' : '沒有符合篩選條件的菜色'}</p>
       ) : (
         <ul style={{ listStyle: 'none', padding: 0 }}>
-          {dishes.map((dish) => (
+          {filteredDishes.map((dish) => (
             <li
               key={dish.id}
               style={{ border: '1px solid #ccc', borderRadius: 8, padding: 12, marginBottom: 8 }}

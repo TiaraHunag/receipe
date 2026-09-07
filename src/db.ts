@@ -21,6 +21,31 @@ CREATE TABLE IF NOT EXISTS dishes (
 );
 `;
 
+const CREATE_INGREDIENT_CATEGORIES_TABLE = `
+CREATE TABLE IF NOT EXISTS ingredient_categories (
+  id TEXT PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  color TEXT NOT NULL
+);
+`;
+
+const CREATE_INGREDIENTS_MASTER_TABLE = `
+CREATE TABLE IF NOT EXISTS ingredients_master (
+  name TEXT PRIMARY KEY,
+  categoryId TEXT
+);
+`;
+
+const CREATE_MENUS_TABLE = `
+CREATE TABLE IF NOT EXISTS menus (
+  date TEXT PRIMARY KEY,
+  breakfast TEXT DEFAULT '{}',
+  lunch TEXT DEFAULT '{}',
+  dinner TEXT DEFAULT '{}',
+  updatedAt TEXT
+);
+`;
+
 export async function initDB(): Promise<SQLiteDBConnection> {
   if (db) return db;
 
@@ -32,6 +57,9 @@ export async function initDB(): Promise<SQLiteDBConnection> {
   db = await sqlite.createConnection('receipe_db', false, 'no-encryption', 1, false);
   await db.open();
   await db.execute(CREATE_DISHES_TABLE);
+  await db.execute(CREATE_INGREDIENT_CATEGORIES_TABLE);
+  await db.execute(CREATE_INGREDIENTS_MASTER_TABLE);
+  await db.execute(CREATE_MENUS_TABLE);
 
   return db;
 }
@@ -41,6 +69,12 @@ export async function getDB(): Promise<SQLiteDBConnection> {
     return await initDB();
   }
   return db;
+}
+
+async function persistToStore(): Promise<void> {
+  if (Capacitor.getPlatform() === 'web') {
+    await sqlite.saveToStore('receipe_db');
+  }
 }
 
 export interface Dish {
@@ -81,6 +115,13 @@ function rowToDish(row: any): Dish {
   };
 }
 
+async function syncIngredientsToMaster(names: string[]): Promise<void> {
+  const database = await getDB();
+  for (const n of names) {
+    await database.run('INSERT OR IGNORE INTO ingredients_master (name, categoryId) VALUES (?, NULL);', [n]);
+  }
+}
+
 export async function getAllDishes(): Promise<Dish[]> {
   const database = await getDB();
   const res = await database.query('SELECT * FROM dishes ORDER BY updatedAt DESC;');
@@ -119,6 +160,8 @@ export async function insertDish(
       now,
     ]
   );
+  await syncIngredientsToMaster(data.ingredients);
+  await persistToStore();
   return id;
 }
 
@@ -147,11 +190,205 @@ export async function updateDish(
       id,
     ]
   );
+  await syncIngredientsToMaster(data.ingredients);
+  await persistToStore();
 }
 
 export async function deleteDish(id: string): Promise<void> {
   const database = await getDB();
   await database.run('DELETE FROM dishes WHERE id = ?;', [id]);
+  await persistToStore();
+}
+
+export async function getAllCategories(): Promise<string[]> {
+  const dishes = await getAllDishes();
+  const set = new Set<string>();
+  dishes.forEach((d) => d.category.forEach((c) => set.add(c)));
+  return Array.from(set).sort();
+}
+
+export async function getAllIngredients(): Promise<string[]> {
+  const dishes = await getAllDishes();
+  const set = new Set<string>();
+  dishes.forEach((d) => d.ingredients.forEach((i) => set.add(i)));
+  return Array.from(set).sort();
+}
+
+export interface IngredientCategory {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface IngredientWithCategory {
+  name: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  color: string | null;
+}
+
+export async function getAllIngredientCategories(): Promise<IngredientCategory[]> {
+  const database = await getDB();
+  const res = await database.query('SELECT * FROM ingredient_categories ORDER BY name;');
+  return (res.values || []) as IngredientCategory[];
+}
+
+export async function createIngredientCategory(name: string, color: string): Promise<string> {
+  const database = await getDB();
+  const id = crypto.randomUUID();
+  await database.run('INSERT INTO ingredient_categories (id, name, color) VALUES (?, ?, ?);', [
+    id,
+    name.trim(),
+    color,
+  ]);
+  await persistToStore();
+  return id;
+}
+
+export async function deleteIngredientCategory(id: string): Promise<void> {
+  const database = await getDB();
+  await database.run('UPDATE ingredients_master SET categoryId = NULL WHERE categoryId = ?;', [id]);
+  await database.run('DELETE FROM ingredient_categories WHERE id = ?;', [id]);
+  await persistToStore();
+}
+
+export async function getIngredientCategoryMap(): Promise<Record<string, IngredientWithCategory>> {
+  const database = await getDB();
+  const res = await database.query(`
+    SELECT im.name as name, im.categoryId as categoryId, ic.name as categoryName, ic.color as color
+    FROM ingredients_master im
+    LEFT JOIN ingredient_categories ic ON im.categoryId = ic.id;
+  `);
+  const map: Record<string, IngredientWithCategory> = {};
+  (res.values || []).forEach((row: any) => {
+    map[row.name] = {
+      name: row.name,
+      categoryId: row.categoryId || null,
+      categoryName: row.categoryName || null,
+      color: row.color || null,
+    };
+  });
+  return map;
+}
+
+export async function setIngredientCategory(
+  ingredientName: string,
+  categoryId: string | null
+): Promise<void> {
+  const database = await getDB();
+  await database.run(
+    `INSERT INTO ingredients_master (name, categoryId) VALUES (?, ?)
+     ON CONFLICT(name) DO UPDATE SET categoryId = excluded.categoryId;`,
+    [ingredientName, categoryId]
+  );
+  await persistToStore();
+}
+
+export type MealType = 'breakfast' | 'lunch' | 'dinner';
+export type CourseType = 'staple' | 'main' | 'side' | 'vegetable' | 'soup' | 'extra';
+
+export const COURSE_LABELS: Record<CourseType, string> = {
+  staple: '主食',
+  main: '主菜',
+  side: '副菜',
+  vegetable: '蔬菜',
+  soup: '湯品',
+  extra: '附餐',
+};
+
+export const COURSE_ORDER: CourseType[] = ['staple', 'main', 'side', 'vegetable', 'soup', 'extra'];
+
+export interface MealCourses {
+  staple: string[];
+  main: string[];
+  side: string[];
+  vegetable: string[];
+  soup: string[];
+  extra: string[];
+}
+
+function emptyMealCourses(): MealCourses {
+  return { staple: [], main: [], side: [], vegetable: [], soup: [], extra: [] };
+}
+
+function parseMealCourses(raw: string | null): MealCourses {
+  if (!raw) return emptyMealCourses();
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    return { ...emptyMealCourses(), main: parsed };
+  }
+  return { ...emptyMealCourses(), ...parsed };
+}
+
+export interface MenuDay {
+  date: string;
+  breakfast: MealCourses;
+  lunch: MealCourses;
+  dinner: MealCourses;
+}
+
+function rowToMenuDay(row: any): MenuDay {
+  return {
+    date: row.date,
+    breakfast: parseMealCourses(row.breakfast),
+    lunch: parseMealCourses(row.lunch),
+    dinner: parseMealCourses(row.dinner),
+  };
+}
+
+export async function getMenusInRange(startDate: string, endDate: string): Promise<Record<string, MenuDay>> {
+  const database = await getDB();
+  const res = await database.query(
+    'SELECT * FROM menus WHERE date >= ? AND date <= ?;',
+    [startDate, endDate]
+  );
+  const map: Record<string, MenuDay> = {};
+  (res.values || []).forEach((row: any) => {
+    map[row.date] = rowToMenuDay(row);
+  });
+  return map;
+}
+
+async function getOrCreateMenuDay(date: string): Promise<MenuDay> {
+  const database = await getDB();
+  const res = await database.query('SELECT * FROM menus WHERE date = ?;', [date]);
+  if (res.values && res.values.length > 0) {
+    return rowToMenuDay(res.values[0]);
+  }
+  return { date, breakfast: emptyMealCourses(), lunch: emptyMealCourses(), dinner: emptyMealCourses() };
+}
+
+async function saveMenuDay(day: MenuDay): Promise<void> {
+  const database = await getDB();
+  const now = new Date().toISOString();
+  await database.run(
+    `INSERT INTO menus (date, breakfast, lunch, dinner, updatedAt) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(date) DO UPDATE SET breakfast = excluded.breakfast, lunch = excluded.lunch, dinner = excluded.dinner, updatedAt = excluded.updatedAt;`,
+    [day.date, JSON.stringify(day.breakfast), JSON.stringify(day.lunch), JSON.stringify(day.dinner), now]
+  );
+  await persistToStore();
+}
+
+export async function addDishToMeal(
+  date: string,
+  meal: MealType,
+  course: CourseType,
+  dishId: string
+): Promise<void> {
+  const day = await getOrCreateMenuDay(date);
+  day[meal][course] = [...day[meal][course], dishId];
+  await saveMenuDay(day);
+}
+
+export async function removeDishFromMeal(
+  date: string,
+  meal: MealType,
+  course: CourseType,
+  dishId: string
+): Promise<void> {
+  const day = await getOrCreateMenuDay(date);
+  day[meal][course] = day[meal][course].filter((d) => d !== dishId);
+  await saveMenuDay(day);
 }
 
 export interface DishExport {
@@ -198,6 +435,8 @@ export async function importDishesFromJSON(jsonText: string): Promise<number> {
         d.updatedAt || new Date().toISOString(),
       ]
     );
+    await syncIngredientsToMaster(d.ingredients || []);
   }
+  await persistToStore();
   return dishes.length;
 }
