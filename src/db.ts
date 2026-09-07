@@ -153,3 +153,51 @@ export async function deleteDish(id: string): Promise<void> {
   const database = await getDB();
   await database.run('DELETE FROM dishes WHERE id = ?;', [id]);
 }
+
+export interface DishExport {
+  version: number;
+  exportedAt: string;
+  dishes: Dish[];
+}
+
+export async function exportDishesToJSON(): Promise<string> {
+  const dishes = await getAllDishes();
+  const payload: DishExport = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    dishes,
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+export async function importDishesFromJSON(jsonText: string): Promise<number> {
+  const parsed = JSON.parse(jsonText);
+  const dishes: Dish[] = Array.isArray(parsed) ? parsed : parsed.dishes;
+  if (!Array.isArray(dishes)) {
+    throw new Error('檔案格式不正確,請確認是本 App 匯出的 JSON 檔');
+  }
+
+  const database = await getDB();
+  for (const d of dishes) {
+    await database.run(
+      `INSERT OR REPLACE INTO dishes
+        (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeContent, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      [
+        d.id,
+        d.name,
+        JSON.stringify(d.category || []),
+        JSON.stringify(d.ingredients || []),
+        d.prepAhead ? 1 : 0,
+        d.source || '',
+        d.notes || '',
+        d.hasRecipe ? 1 : 0,
+        d.recipe?.coverPhotoPath || '',
+        JSON.stringify(d.recipe?.content || []),
+        d.createdAt || new Date().toISOString(),
+        d.updatedAt || new Date().toISOString(),
+      ]
+    );
+  }
+  return dishes.length;
+}
