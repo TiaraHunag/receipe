@@ -1,5 +1,6 @@
-import React, { useId } from 'react';
+import React from 'react';
 import styles from './Textarea.module.css';
+import { useAutoId } from '../useAutoId';
 
 export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -20,7 +21,7 @@ export function Textarea({
   rows = 4,
   ...rest
 }: TextareaProps) {
-  const autoId = useId();
+  const autoId = useAutoId('textarea');
   const areaId = id || autoId;
 
   return (

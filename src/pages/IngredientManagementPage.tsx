@@ -10,6 +10,7 @@ import {
   IngredientWithCategory,
 } from '../db';
 import { CATEGORY_COLORS, getColor } from '../colors';
+import { Card, Select, Button, ConfirmDialog, EmptyState, Spinner } from '../components';
 
 function IngredientManagementPage() {
   const [categories, setCategories] = useState<IngredientCategory[]>([]);
@@ -17,6 +18,7 @@ function IngredientManagementPage() {
   const [loading, setLoading] = useState(true);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState(CATEGORY_COLORS[0].key);
+  const [deletingCategory, setDeletingCategory] = useState<IngredientCategory | null>(null);
 
   const load = async () => {
     const [cats, map] = await Promise.all([getAllIngredientCategories(), getIngredientCategoryMap()]);
@@ -37,9 +39,10 @@ function IngredientManagementPage() {
     await load();
   };
 
-  const handleDeleteCategory = async (id: string) => {
-    if (!window.confirm('刪除這個分類後,原本屬於這個分類的食材會變成「未分類」,確定要刪除嗎?')) return;
-    await deleteIngredientCategory(id);
+  const handleDeleteCategory = async () => {
+    if (!deletingCategory) return;
+    await deleteIngredientCategory(deletingCategory.id);
+    setDeletingCategory(null);
     await load();
   };
 
@@ -48,18 +51,24 @@ function IngredientManagementPage() {
     await load();
   };
 
-  if (loading) return <div style={{ padding: 20 }}>讀取中...</div>;
+  if (loading) {
+    return (
+      <div style={{ padding: 'var(--space-4)', display: 'flex', justifyContent: 'center' }}>
+        <Spinner />
+      </div>
+    );
+  }
 
   const ingredientNames = Object.keys(ingredientMap).sort();
 
   return (
-    <div style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 700 }}>
-      <Link to="/">← 返回菜色列表</Link>
-      <h1>食材管理</h1>
+    <div style={{ padding: 'var(--space-4)', maxWidth: 700, margin: '0 auto', paddingBottom: 96 }}>
+      <Link to="/" style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', textDecoration: 'none' }}>← 返回菜色列表</Link>
+      <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 'var(--space-3) 0 var(--space-4)' }}>食材管理</h1>
 
-      <div style={{ marginBottom: 24, border: '1px solid #ccc', borderRadius: 8, padding: 12 }}>
-        <h2 style={{ fontSize: 16, marginBottom: 8 }}>分類管理</h2>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      <Card style={{ marginBottom: 'var(--space-5)', padding: 'var(--space-4)' }}>
+        <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: '0 0 var(--space-3)' }}>分類管理</h2>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
           {categories.map((c) => {
             const color = getColor(c.color);
             return (
@@ -68,17 +77,18 @@ function IngredientManagementPage() {
                 style={{
                   background: color.bg,
                   color: color.text,
-                  padding: '4px 10px',
-                  borderRadius: 4,
+                  padding: '4px var(--space-3)',
+                  borderRadius: 'var(--radius-pill)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
+                  font: 'var(--font-caption)',
                 }}
               >
                 {c.name}
                 <button
                   type="button"
-                  onClick={() => handleDeleteCategory(c.id)}
+                  onClick={() => setDeletingCategory(c)}
                   style={{ border: 'none', background: 'none', cursor: 'pointer', color: color.text }}
                 >
                   ×
@@ -87,13 +97,13 @@ function IngredientManagementPage() {
             );
           })}
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="text"
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
             placeholder="新分類名稱,例如:蔬菜"
-            style={{ padding: 6 }}
+            style={{ padding: 6, borderRadius: 'var(--radius-control)', border: '1px solid var(--color-border)', font: 'var(--font-body)' }}
           />
           {CATEGORY_COLORS.map((c) => (
             <button
@@ -105,47 +115,58 @@ function IngredientManagementPage() {
                 height: 20,
                 borderRadius: '50%',
                 background: c.bg,
-                border: newCategoryColor === c.key ? '2px solid #333' : '1px solid #ccc',
+                border: newCategoryColor === c.key ? '2px solid var(--color-text)' : '1px solid var(--color-border)',
                 cursor: 'pointer',
               }}
               title={c.label}
             />
           ))}
-          <button type="button" onClick={handleCreateCategory}>新增分類</button>
+          <Button type="button" size="sm" onClick={handleCreateCategory}>新增分類</Button>
         </div>
-      </div>
+      </Card>
 
-      <h2 style={{ fontSize: 16, marginBottom: 8 }}>食材清單({ingredientNames.length})</h2>
+      <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: '0 0 var(--space-3)' }}>
+        食材清單({ingredientNames.length})
+      </h2>
       {ingredientNames.length === 0 ? (
-        <p>目前還沒有任何食材紀錄</p>
+        <EmptyState icon="🧊" title="目前還沒有任何食材紀錄" />
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           {ingredientNames.map((name) => {
             const info = ingredientMap[name];
             const color = getColor(info.color);
             return (
-              <li
+              <div
                 key={name}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #eee' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)' }}
               >
-                <span style={{ background: color.bg, color: color.text, padding: '2px 8px', borderRadius: 4, minWidth: 80, textAlign: 'center' }}>
+                <span style={{ background: color.bg, color: color.text, padding: '2px var(--space-2)', borderRadius: 'var(--radius-control)', minWidth: 80, textAlign: 'center', font: 'var(--font-caption)' }}>
                   {name}
                 </span>
-                <select
-                  value={info.categoryId || ''}
-                  onChange={(e) => handleChangeCategory(name, e.target.value)}
-                  style={{ padding: 4 }}
-                >
-                  <option value="">未分類</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </li>
+                <div style={{ width: 140 }}>
+                  <Select
+                    aria-label={`${name} 的分類`}
+                    value={info.categoryId || ''}
+                    onChange={(e) => handleChangeCategory(name, e.target.value)}
+                    placeholder="未分類"
+                    options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                  />
+                </div>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
+
+      <ConfirmDialog
+        open={!!deletingCategory}
+        title="刪除分類"
+        description="刪除這個分類後,原本屬於這個分類的食材會變成「未分類」,確定要刪除嗎?"
+        confirmLabel="刪除"
+        danger
+        onConfirm={handleDeleteCategory}
+        onCancel={() => setDeletingCategory(null)}
+      />
     </div>
   );
 }

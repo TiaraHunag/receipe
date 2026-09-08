@@ -16,10 +16,28 @@ CREATE TABLE IF NOT EXISTS dishes (
   hasRecipe INTEGER DEFAULT 0,
   recipeCoverPhotoPath TEXT,
   recipeContent TEXT,
+  courseTypes TEXT DEFAULT '[]',
+  tags TEXT DEFAULT '[]',
   createdAt TEXT,
   updatedAt TEXT
 );
 `;
+
+// 舊版本已建立的 dishes 資料表可能缺少後來才加的欄位,
+// CREATE TABLE IF NOT EXISTS 不會補齊既有資料表的欄位,所以開機時需檢查並手動補上。
+async function ensureDishesSchema(database: SQLiteDBConnection): Promise<void> {
+  const res = await database.query('PRAGMA table_info(dishes);');
+  const columns = (res.values || []).map((row: any) => row.name as string);
+  const requiredColumns: { name: string; ddl: string }[] = [
+    { name: 'courseTypes', ddl: "ALTER TABLE dishes ADD COLUMN courseTypes TEXT DEFAULT '[]';" },
+    { name: 'tags', ddl: "ALTER TABLE dishes ADD COLUMN tags TEXT DEFAULT '[]';" },
+  ];
+  for (const col of requiredColumns) {
+    if (!columns.includes(col.name)) {
+      await database.execute(col.ddl);
+    }
+  }
+}
 
 const CREATE_INGREDIENT_CATEGORIES_TABLE = `
 CREATE TABLE IF NOT EXISTS ingredient_categories (
@@ -57,6 +75,7 @@ export async function initDB(): Promise<SQLiteDBConnection> {
   db = await sqlite.createConnection('receipe_db', false, 'no-encryption', 1, false);
   await db.open();
   await db.execute(CREATE_DISHES_TABLE);
+  await ensureDishesSchema(db);
   await db.execute(CREATE_INGREDIENT_CATEGORIES_TABLE);
   await db.execute(CREATE_INGREDIENTS_MASTER_TABLE);
   await db.execute(CREATE_MENUS_TABLE);
@@ -90,6 +109,8 @@ export interface Dish {
     coverPhotoPath: string;
     content: { type: 'text' | 'image'; text?: string; path?: string }[];
   } | null;
+  courseTypes: CourseType[];
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -110,6 +131,8 @@ function rowToDish(row: any): Dish {
           content: row.recipeContent ? JSON.parse(row.recipeContent) : [],
         }
       : null,
+    courseTypes: row.courseTypes ? JSON.parse(row.courseTypes) : [],
+    tags: row.tags ? JSON.parse(row.tags) : [],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -143,8 +166,8 @@ export async function insertDish(
   const now = new Date().toISOString();
   await database.run(
     `INSERT INTO dishes
-      (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeContent, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeContent, courseTypes, tags, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       id,
       data.name,
@@ -156,6 +179,8 @@ export async function insertDish(
       data.hasRecipe ? 1 : 0,
       data.recipe?.coverPhotoPath || '',
       JSON.stringify(data.recipe?.content || []),
+      JSON.stringify(data.courseTypes || []),
+      JSON.stringify(data.tags || []),
       now,
       now,
     ]
@@ -174,7 +199,7 @@ export async function updateDish(
   await database.run(
     `UPDATE dishes SET
       name = ?, category = ?, ingredients = ?, prepAhead = ?, source = ?, notes = ?,
-      hasRecipe = ?, recipeCoverPhotoPath = ?, recipeContent = ?, updatedAt = ?
+      hasRecipe = ?, recipeCoverPhotoPath = ?, recipeContent = ?, courseTypes = ?, tags = ?, updatedAt = ?
      WHERE id = ?;`,
     [
       data.name,
@@ -186,6 +211,8 @@ export async function updateDish(
       data.hasRecipe ? 1 : 0,
       data.recipe?.coverPhotoPath || '',
       JSON.stringify(data.recipe?.content || []),
+      JSON.stringify(data.courseTypes || []),
+      JSON.stringify(data.tags || []),
       now,
       id,
     ]
@@ -204,6 +231,13 @@ export async function getAllCategories(): Promise<string[]> {
   const dishes = await getAllDishes();
   const set = new Set<string>();
   dishes.forEach((d) => d.category.forEach((c) => set.add(c)));
+  return Array.from(set).sort();
+}
+
+export async function getAllTags(): Promise<string[]> {
+  const dishes = await getAllDishes();
+  const set = new Set<string>();
+  dishes.forEach((d) => (d.tags || []).forEach((t) => set.add(t)));
   return Array.from(set).sort();
 }
 
@@ -418,8 +452,8 @@ export async function importDishesFromJSON(jsonText: string): Promise<number> {
   for (const d of dishes) {
     await database.run(
       `INSERT OR REPLACE INTO dishes
-        (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeContent, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeContent, courseTypes, tags, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         d.id,
         d.name,
@@ -431,6 +465,8 @@ export async function importDishesFromJSON(jsonText: string): Promise<number> {
         d.hasRecipe ? 1 : 0,
         d.recipe?.coverPhotoPath || '',
         JSON.stringify(d.recipe?.content || []),
+        JSON.stringify(d.courseTypes || []),
+        JSON.stringify(d.tags || []),
         d.createdAt || new Date().toISOString(),
         d.updatedAt || new Date().toISOString(),
       ]

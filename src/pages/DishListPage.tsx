@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getAllDishes, getAllCategories, getAllIngredients, Dish } from '../db';
+import { Card, Select, Fab, IconButton, EmptyState, Tag, Spinner } from '../components';
 
 function DishListPage() {
   const [dishes, setDishes] = useState<Dish[]>([]);
@@ -36,114 +37,90 @@ function DishListPage() {
     return true;
   });
 
-  if (loading) return <div style={{ padding: 20 }}>讀取中...</div>;
+  if (loading) {
+    return (
+      <div style={{ padding: 'var(--space-4)', display: 'flex', justifyContent: 'center' }}>
+        <Spinner />
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: 16, fontFamily: 'sans-serif', maxWidth: 480, margin: '0 auto', paddingBottom: 80, position: 'relative', minHeight: '100vh' }}>
-      <h1 style={{ fontSize: 20, margin: '12px 0' }}>食譜</h1>
+    <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96, position: 'relative', minHeight: '100vh' }}>
+      <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: '12px 0' }}>食譜</h1>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: 14, color: '#666' }}>篩選:</span>
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          style={{ padding: 6 }}
-        >
-          <option value="">所有類型</option>
-          {categoryOptions.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-        <select
-          value={filterIngredient}
-          onChange={(e) => setFilterIngredient(e.target.value)}
-          style={{ padding: 6 }}
-        >
-          <option value="">所有食材</option>
-          {ingredientOptions.map((i) => (
-            <option key={i} value={i}>{i}</option>
-          ))}
-        </select>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', alignItems: 'flex-end' }}>
+        <div style={{ flex: 1 }}>
+          <Select
+            aria-label="依類型篩選"
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            placeholder="所有類型"
+            options={categoryOptions.map((c) => ({ value: c, label: c }))}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <Select
+            aria-label="依食材篩選"
+            value={filterIngredient}
+            onChange={(e) => setFilterIngredient(e.target.value)}
+            placeholder="所有食材"
+            options={ingredientOptions.map((i) => ({ value: i, label: i }))}
+          />
+        </div>
         {(filterCategory || filterIngredient) && (
-          <button
-            type="button"
+          <IconButton
+            icon="✕"
+            label="清除篩選"
             onClick={() => { setFilterCategory(''); setFilterIngredient(''); }}
-            style={{ fontSize: 13 }}
-          >
-            清除篩選
-          </button>
+          />
         )}
       </div>
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-
-      {filteredDishes.length === 0 ? (
-        <p>{dishes.length === 0 ? '目前沒有資料' : '沒有符合篩選條件的菜色'}</p>
-      ) : (
-        <ul style={{ listStyle: 'none', padding: 0 }}>
-          {filteredDishes.map((dish) => (
-            <li
-              key={dish.id}
-              style={{ border: '1px solid #ccc', borderRadius: 8, padding: 12, marginBottom: 8 }}
-            >
-              <Link to={`/dish/${dish.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <strong>{dish.name}</strong>
-                {dish.hasRecipe && <span style={{ marginLeft: 8, fontSize: 12, color: 'green' }}>有食譜</span>}
-                {dish.category.length > 0 && (
-                  <div style={{ fontSize: 14, color: '#666' }}>{dish.category.join(', ')}</div>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
+      {error && (
+        <p style={{ color: 'var(--color-danger)', font: 'var(--font-caption)', marginBottom: 'var(--space-3)' }}>
+          {error}
+        </p>
       )}
 
-<Link
-        to="/quick-add"
-        style={{
-          position: 'fixed',
-          right: 24,
-          bottom: 152,
-          width: 44,
-          height: 44,
-          borderRadius: '50%',
-          background: '#fff',
-          color: '#1a73e8',
-          fontSize: 20,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textDecoration: 'none',
-          border: '1px solid #1a73e8',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-          zIndex: 90,
-        }}
-        title="貼上連結/文字快速新增"
-      >
-        🔗
-      </Link>
-      <Link
-        to="/new"
-        style={{
-          position: 'fixed',
-          right: 20,
-          bottom: 84,
-          width: 56,
-          height: 56,
-          borderRadius: '50%',
-          background: '#1a73e8',
-          color: '#fff',
-          fontSize: 30,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textDecoration: 'none',
-          boxShadow: '0 4px 10px rgba(0,0,0,0.25)',
-          zIndex: 90,
-        }}
-      >
-        +
-      </Link>
+      {filteredDishes.length === 0 ? (
+        <EmptyState
+          icon="🍳"
+          title={dishes.length === 0 ? '目前沒有資料' : '沒有符合篩選條件的菜色'}
+          description={dishes.length === 0 ? '按右下角的 + 開始新增第一道菜色' : undefined}
+        />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          {filteredDishes.map((dish) => (
+            <Link key={dish.id} to={`/dish/${dish.id}`} style={{ textDecoration: 'none' }}>
+              <Card interactive style={{ padding: 'var(--space-4)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: dish.category.length ? 'var(--space-2)' : 0 }}>
+                  <strong style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)' }}>{dish.name}</strong>
+                  {dish.hasRecipe && (
+                    <span style={{ font: 'var(--font-caption)', color: 'var(--color-primary)' }}>有食譜</span>
+                  )}
+                </div>
+                {dish.category.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
+                    {dish.category.map((c) => (
+                      <Tag key={c}>{c}</Tag>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <div style={{ position: 'fixed', right: 20, bottom: 84, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', zIndex: 90 }}>
+        <Link to="/quick-add" title="貼上連結/文字快速新增" style={{ textDecoration: 'none' }}>
+          <IconButton icon="🔗" label="貼上連結/文字快速新增" style={{ background: 'var(--color-surface)', boxShadow: 'var(--shadow-float)' }} />
+        </Link>
+        <Link to="/new" style={{ textDecoration: 'none' }}>
+          <Fab label="新增菜色" />
+        </Link>
+      </div>
     </div>
   );
 }

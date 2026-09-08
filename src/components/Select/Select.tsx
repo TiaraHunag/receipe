@@ -1,5 +1,6 @@
-import React, { useId } from 'react';
+import React from 'react';
 import styles from './Select.module.css';
+import { useAutoId } from '../useAutoId';
 
 export interface SelectOption {
   value: string;
@@ -27,7 +28,7 @@ export function Select({
   className,
   ...rest
 }: SelectProps) {
-  const autoId = useId();
+  const autoId = useAutoId('select');
   const selectId = id || autoId;
 
   return (

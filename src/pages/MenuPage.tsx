@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   getMenusInRange,
   addDishToMeal,
@@ -13,6 +12,18 @@ import {
   COURSE_ORDER,
   Dish,
 } from '../db';
+import {
+  Card,
+  Button,
+  IconButton,
+  Checkbox,
+  Input,
+  Modal,
+  SegmentedControl,
+  DateSwitcher,
+  EmptyState,
+  Spinner,
+} from '../components';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: '早餐',
@@ -95,8 +106,8 @@ function MenuPage() {
     return dish ? dish.name : '(已刪除的菜色)';
   };
 
-  const toggleEditMode = () => {
-    setEditMode(!editMode);
+  const setModeFromSegment = (value: string) => {
+    setEditMode(value === 'edit');
     setPicker(null);
     setSelectedDishIds([]);
   };
@@ -133,7 +144,7 @@ function MenuPage() {
         await addDishToMeal(dateStr, picker.meal, picker.course, dishId);
       }
       await fetchDayMenu();
-      backToCourse();
+      closePicker();
     } finally {
       setSaving(false);
     }
@@ -158,6 +169,8 @@ function MenuPage() {
         notes: '',
         hasRecipe: false,
         recipe: null,
+        courseTypes: picker?.course ? [picker.course] : [],
+        tags: [],
       });
       setNewDishName('');
       await loadDishes();
@@ -174,214 +187,177 @@ function MenuPage() {
       COURSE_ORDER.every((course) => (menu[meal][course] || []).length === 0)
     );
 
-  return (
-    <div style={{ padding: 16, fontFamily: 'sans-serif', maxWidth: 480, margin: '0 auto',paddingBottom: 80 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button
-          onClick={toggleEditMode}
-          style={{
-            fontSize: 14,
-            padding: '6px 14px',
-            borderRadius: 6,
-            background: editMode ? '#1a73e8' : '#f0f0f0',
-            color: editMode ? '#fff' : '#333',
-            border: 'none',
-          }}
-        >
-          {editMode ? '完成編輯' : '編輯'}
-        </button>
-      </div>
-      <h1 style={{ fontSize: 20, margin: '12px 0' }}>菜單規劃</h1>
+  const dateLabel = `週${WEEKDAY_LABELS[currentDate.getDay()]} ${dateStr}`;
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <button onClick={goPrevDay} style={{ fontSize: 20, padding: '8px 16px', minWidth: 48 }}>‹</button>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 17, fontWeight: 'bold' }}>
-            週{WEEKDAY_LABELS[currentDate.getDay()]}
-          </div>
-          <div style={{ fontSize: 14, color: '#666' }}>{dateStr}</div>
-          {!isToday && (
-            <button onClick={goToday} style={{ fontSize: 12, color: '#1a73e8', border: 'none', background: 'none', cursor: 'pointer', marginTop: 2 }}>
-              回到今天
-            </button>
-          )}
-        </div>
-        <button onClick={goNextDay} style={{ fontSize: 20, padding: '8px 16px', minWidth: 48 }}>›</button>
+  return (
+    <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 'var(--space-3) 0' }}>菜單規劃</h1>
+        <SegmentedControl
+          options={[
+            { value: 'view', label: '檢視' },
+            { value: 'edit', label: '編輯' },
+          ]}
+          value={editMode ? 'edit' : 'view'}
+          onChange={setModeFromSegment}
+        />
+      </div>
+
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <DateSwitcher label={dateLabel} onPrev={goPrevDay} onNext={goNextDay} isToday={isToday} onToday={goToday} />
       </div>
 
       {loading ? (
-        <p>讀取中...</p>
-      ) : dayIsEmpty && !editMode ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
-          <p style={{ fontSize: 15, marginBottom: 12 }}>這天還沒有安排菜單</p>
-          <button onClick={toggleEditMode} style={{ padding: '10px 20px', fontSize: 14, borderRadius: 6 }}>
-            開始安排
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-5) 0' }}>
+          <Spinner />
         </div>
+      ) : dayIsEmpty && !editMode ? (
+        <EmptyState
+          icon="📅"
+          title="這天還沒有安排菜單"
+          action={<Button onClick={() => setModeFromSegment('edit')}>開始安排</Button>}
+        />
       ) : (
         (['breakfast', 'lunch', 'dinner'] as const).map((meal) => {
           const mealIsEmpty = COURSE_ORDER.every((course) => (menu?.[meal][course] || []).length === 0);
           if (mealIsEmpty && !editMode) return null;
 
           return (
-            <div key={meal} style={{ border: '1px solid #ddd', borderRadius: 10, padding: 14, marginBottom: 14 }}>
-              <div style={{ fontSize: 17, fontWeight: 'bold', marginBottom: 10 }}>{MEAL_LABELS[meal]}</div>
+            <Card key={meal} style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+              <div style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', marginBottom: 'var(--space-3)' }}>{MEAL_LABELS[meal]}</div>
 
               {COURSE_ORDER.map((course) => {
                 const dishIds = menu?.[meal][course] || [];
                 if (dishIds.length === 0) return null;
                 return (
-                  <div key={course} style={{ marginBottom: 8, paddingLeft: 8, borderLeft: '3px solid #eee' }}>
-                    <div style={{ fontSize: 13, color: '#888', marginBottom: 4 }}>{COURSE_LABELS[course]}</div>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  <div key={course} style={{ marginBottom: 'var(--space-2)', paddingLeft: 'var(--space-2)', borderLeft: '3px solid var(--color-border)' }}>
+                    <div style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>{COURSE_LABELS[course]}</div>
+                    <div>
                       {dishIds.map((dishId) => (
-                        <li
+                        <div
                           key={dishId}
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
-                            padding: '8px 4px',
-                            borderBottom: '1px solid #f5f5f5',
-                            fontSize: 14,
+                            padding: 'var(--space-2) 4px',
+                            borderBottom: '1px solid var(--color-surface-sunken)',
+                            font: 'var(--font-body)',
                           }}
                         >
                           {dishNameOf(dishId)}
                           {editMode && (
-                            <button
+                            <IconButton
+                              icon="×"
+                              label="移除這道菜"
+                              danger
                               onClick={() => handleRemoveDish(meal, course, dishId)}
-                              style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'red', fontSize: 16, padding: '2px 8px' }}
-                            >
-                              ×
-                            </button>
+                            />
                           )}
-                        </li>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 );
               })}
 
               {mealIsEmpty && editMode && (
-                <p style={{ fontSize: 14, color: '#bbb', margin: '2px 0 10px' }}>還沒安排</p>
+                <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)', margin: '2px 0 var(--space-3)' }}>還沒安排</p>
               )}
 
               {editMode && (
-                picker?.meal === meal ? (
-                  <div style={{ border: '1px solid #eee', borderRadius: 8, marginTop: 8 }}>
-                    {picker.step === 'course' ? (
-                      <>
-                        <p style={{ fontSize: 13, color: '#666', padding: '10px 10px 4px' }}>要新增哪個分類?</p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 10px 10px' }}>
-                          {COURSE_ORDER.map((course) => (
-                            <button
-                              key={course}
-                              onClick={() => chooseCourse(course)}
-                              style={{ padding: '8px 14px', fontSize: 14, borderRadius: 6 }}
-                            >
-                              {COURSE_LABELS[course]}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          onClick={closePicker}
-                          style={{ width: '100%', padding: 10, fontSize: 14, border: 'none', background: '#f5f5f5' }}
-                        >
-                          取消
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 10px 4px' }}>
-                          <button
-                            onClick={backToCourse}
-                            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, padding: 0 }}
-                          >
-                            ‹
-                          </button>
-                          <p style={{ fontSize: 13, color: '#666', margin: 0 }}>
-                            勾選要加入「{COURSE_LABELS[picker.course!]}」的菜色
-                          </p>
-                        </div>
-                        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                          {allDishes.length === 0 ? (
-                            <div style={{ fontSize: 13, color: '#999', padding: 8 }}>還沒有菜色可選</div>
-                          ) : (
-                            allDishes.map((dish) => (
-                              <label
-                                key={dish.id}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 8,
-                                  fontSize: 14,
-                                  padding: '10px 10px',
-                                  borderBottom: '1px solid #f5f5f5',
-                                  cursor: 'pointer',
-                                  background: selectedDishIds.includes(dish.id) ? '#eef6ff' : 'transparent',
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedDishIds.includes(dish.id)}
-                                  onChange={() => toggleSelect(dish.id)}
-                                />
-                                {dish.name}
-                              </label>
-                            ))
-                          )}
-                        </div>
-                        <div style={{ padding: 8, borderTop: '1px solid #eee', background: '#fafafa' }}>
-                          <p style={{ fontSize: 12, color: '#999', margin: '0 0 6px' }}>找不到想要的菜?直接新增:</p>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <input
-                              type="text"
-                              value={newDishName}
-                              onChange={(e) => setNewDishName(e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCreateAndAdd())}
-                              placeholder="輸入新菜名"
-                              style={{ flex: 1, padding: 6, fontSize: 14 }}
-                            />
-                            <button
-                              onClick={handleCreateAndAdd}
-                              disabled={creating || !newDishName.trim()}
-                              style={{ padding: '6px 10px', fontSize: 13 }}
-                            >
-                              {creating ? '建立中...' : '建立並勾選'}
-                            </button>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, padding: 8 }}>
-                          <button
-                            onClick={closePicker}
-                            style={{ flex: 1, padding: 10, fontSize: 14 }}
-                          >
-                            取消
-                          </button>
-                          <button
-                            onClick={handleConfirmAdd}
-                            disabled={saving || selectedDishIds.length === 0}
-                            style={{ flex: 1, padding: 10, fontSize: 14, fontWeight: 'bold' }}
-                          >
-                            {saving ? '儲存中...' : `確認新增${selectedDishIds.length > 0 ? `(${selectedDishIds.length})` : ''}`}
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => openPicker(meal)}
-                    style={{ width: '100%', padding: 10, fontSize: 15, borderRadius: 6, marginTop: 4 }}
-                  >
-                    + 新增菜色
-                  </button>
-                )
+                <Button variant="secondary" fullWidth onClick={() => openPicker(meal)} style={{ marginTop: 'var(--space-2)' }}>
+                  + 新增菜色
+                </Button>
               )}
-            </div>
+            </Card>
           );
         })
       )}
+
+      <Modal
+        open={!!picker}
+        onClose={closePicker}
+        title={
+          picker?.step === 'course'
+            ? `新增到${MEAL_LABELS[picker.meal]}——選擇分類`
+            : picker
+            ? `勾選要加入「${COURSE_LABELS[picker.course!]}」的菜色`
+            : undefined
+        }
+      >
+        {picker?.step === 'course' && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+            {COURSE_ORDER.map((course) => (
+              <Button key={course} variant="secondary" size="sm" onClick={() => chooseCourse(course)}>
+                {COURSE_LABELS[course]}
+              </Button>
+            ))}
+          </div>
+        )}
+
+        {picker?.step === 'dish' && (
+          <>
+            <button
+              type="button"
+              onClick={backToCourse}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', font: 'var(--font-caption)', color: 'var(--color-text-secondary)', padding: 0, marginBottom: 'var(--space-3)' }}
+            >
+              ‹ 換一個分類
+            </button>
+
+            <div style={{ maxHeight: 240, overflowY: 'auto', marginBottom: 'var(--space-3)' }}>
+              {allDishes.length === 0 ? (
+                <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)' }}>還沒有菜色可選</p>
+              ) : (
+                allDishes.map((dish) => (
+                  <div key={dish.id} style={{ padding: 'var(--space-1) 0' }}>
+                    <Checkbox
+                      label={dish.name}
+                      checked={selectedDishIds.includes(dish.id)}
+                      onChange={() => toggleSelect(dish.id)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+              <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', margin: '0 0 var(--space-2)' }}>找不到想要的菜?直接新增:</p>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <div style={{ flex: 1 }}>
+                  <Input
+                    value={newDishName}
+                    onChange={(e) => setNewDishName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCreateAndAdd())}
+                    placeholder="輸入新菜名"
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={handleCreateAndAdd}
+                  loading={creating}
+                  disabled={!newDishName.trim()}
+                >
+                  建立並勾選
+                </Button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <Button variant="secondary" fullWidth onClick={closePicker}>取消</Button>
+              <Button
+                fullWidth
+                onClick={handleConfirmAdd}
+                loading={saving}
+                disabled={selectedDishIds.length === 0}
+              >
+                確認新增{selectedDishIds.length > 0 ? `(${selectedDishIds.length})` : ''}
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

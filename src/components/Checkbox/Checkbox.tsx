@@ -1,5 +1,6 @@
-import React, { useId } from 'react';
+import React from 'react';
 import styles from './Checkbox.module.css';
+import { useAutoId } from '../useAutoId';
 
 export interface CheckboxProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
@@ -10,7 +11,7 @@ export interface CheckboxProps
  * 打勾多選項，用於菜單規劃「選菜」畫面等需要多選的清單。
  */
 export function Checkbox({ label, id, className, ...rest }: CheckboxProps) {
-  const autoId = useId();
+  const autoId = useAutoId('checkbox');
   const checkboxId = id || autoId;
 
   return (

@@ -17,8 +17,8 @@ function BottomTabBar() {
         left: 0,
         right: 0,
         display: 'flex',
-        background: '#fff',
-        borderTop: '1px solid #e0e0e0',
+        background: 'var(--color-surface)',
+        borderTop: '1px solid var(--color-border)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         zIndex: 100,
       }}
@@ -36,8 +36,8 @@ function BottomTabBar() {
             justifyContent: 'center',
             padding: '8px 0 6px',
             textDecoration: 'none',
-            color: isActive ? '#1a73e8' : '#888',
-            fontSize: 11,
+            color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            font: 'var(--font-caption)',
           })}
         >
           <span style={{ fontSize: 22, marginBottom: 2 }}>{tab.icon}</span>
