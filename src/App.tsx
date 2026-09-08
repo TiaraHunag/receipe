@@ -4,6 +4,7 @@ import DishListPage from './pages/DishListPage';
 import DishFormPage from './pages/DishFormPage';
 import DishDetailPage from './pages/DishDetailPage';
 import MenuPage from './pages/MenuPage';
+import MenuDayPage from './pages/MenuDayPage';
 import IngredientManagementPage from './pages/IngredientManagementPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import ProfilePage from './pages/ProfilePage';
@@ -25,6 +26,7 @@ function App() {
         <Route path="/edit/:id" element={<DishFormPage />} />
         <Route path="/dish/:id" element={<DishDetailPage />} />
         <Route path="/menu" element={<MenuPage />} />
+        <Route path="/menu/:date" element={<MenuDayPage />} />
         <Route path="/ingredients" element={<IngredientManagementPage />} />
         <Route path="/shopping" element={<ShoppingListPage />} />
         <Route path="/profile" element={<ProfilePage />} />

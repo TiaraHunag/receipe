@@ -1,35 +1,42 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getMenusInRange,
-  addDishToMeal,
-  removeDishFromMeal,
   getAllDishes,
-  insertDish,
   MenuDay,
   MealType,
   CourseType,
-  COURSE_LABELS,
+  MealCourses,
   COURSE_ORDER,
   Dish,
 } from '../db';
-import {
-  Card,
-  Button,
-  IconButton,
-  Checkbox,
-  Input,
-  Modal,
-  SegmentedControl,
-  DateSwitcher,
-  EmptyState,
-  Spinner,
-} from '../components';
+import { Card, DateSwitcher, Spinner, Tag } from '../components';
+import type { TagColorKey } from '../components';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: '早餐',
   lunch: '午餐',
   dinner: '晚餐',
 };
+
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+/**
+ * 課程分類 → Tag 顏色的固定對應。
+ * 純粹是週總覽格子裡用來區分「這道菜屬於主食/主菜/…」的視覺提示,
+ * 跟模組四的食材分類色盤無關,只是借用同一份 9 色 Tag 元件。
+ */
+const COURSE_TAG_COLOR: Record<CourseType, TagColorKey> = {
+  staple: 'yellow',
+  main: 'red',
+  side: 'orange',
+  vegetable: 'green',
+  soup: 'blue',
+  extra: 'purple',
+};
+
+/** 每個餐格最多顯示幾道菜名,超過的用「+N」代替 */
+const MAX_CHIPS_PER_MEAL = 2;
 
 function formatDate(d: Date): string {
   const y = d.getFullYear();
@@ -38,326 +45,217 @@ function formatDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+function startOfWeek(d: Date): Date {
+  const copy = new Date(d);
+  copy.setHours(0, 0, 0, 0);
+  copy.setDate(copy.getDate() - copy.getDay());
+  return copy;
+}
 
-type PickerState = {
-  meal: MealType;
-  step: 'course' | 'dish';
-  course?: CourseType;
-} | null;
+function addDays(d: Date, days: number): Date {
+  const copy = new Date(d);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+interface MealItem {
+  dishId: string;
+  course: CourseType;
+}
+
+function flattenMeal(courses: MealCourses): MealItem[] {
+  const list: MealItem[] = [];
+  COURSE_ORDER.forEach((course) => {
+    (courses[course] || []).forEach((dishId) => list.push({ dishId, course }));
+  });
+  return list;
+}
 
 function MenuPage() {
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [menu, setMenu] = useState<MenuDay | null>(null);
+  const navigate = useNavigate();
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  const [menus, setMenus] = useState<Record<string, MenuDay>>({});
   const [allDishes, setAllDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editMode, setEditMode] = useState(false);
-  const [picker, setPicker] = useState<PickerState>(null);
-  const [selectedDishIds, setSelectedDishIds] = useState<string[]>([]);
-  const [newDishName, setNewDishName] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [saving, setSaving] = useState(false);
 
-  const dateStr = formatDate(currentDate);
-
-  const loadDishes = async () => {
-    const dishes = await getAllDishes();
-    setAllDishes(dishes);
-  };
+  const weekEnd = addDays(weekStart, 6);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const todayStr = formatDate(new Date());
+  const isCurrentWeek = weekDays.some((d) => formatDate(d) === todayStr);
 
   useEffect(() => {
-    loadDishes();
+    getAllDishes().then(setAllDishes);
   }, []);
 
-  const fetchDayMenu = async () => {
-    setLoading(true);
-    const map = await getMenusInRange(dateStr, dateStr);
-    setMenu(
-      map[dateStr] || {
-        date: dateStr,
-        breakfast: { staple: [], main: [], side: [], vegetable: [], soup: [], extra: [] },
-        lunch: { staple: [], main: [], side: [], vegetable: [], soup: [], extra: [] },
-        dinner: { staple: [], main: [], side: [], vegetable: [], soup: [], extra: [] },
-      }
-    );
-    setLoading(false);
-  };
-
   useEffect(() => {
-    fetchDayMenu();
-    setPicker(null);
+    setLoading(true);
+    getMenusInRange(formatDate(weekStart), formatDate(addDays(weekStart, 6)))
+      .then(setMenus)
+      .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateStr]);
-
-  const goPrevDay = () => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() - 1);
-    setCurrentDate(d);
-  };
-  const goNextDay = () => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() + 1);
-    setCurrentDate(d);
-  };
-  const goToday = () => setCurrentDate(new Date());
+  }, [weekStart]);
 
   const dishNameOf = (dishId: string): string => {
     const dish = allDishes.find((d) => d.id === dishId);
     return dish ? dish.name : '(已刪除的菜色)';
   };
 
-  const setModeFromSegment = (value: string) => {
-    setEditMode(value === 'edit');
-    setPicker(null);
-    setSelectedDishIds([]);
-  };
+  const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
+  const goNextWeek = () => setWeekStart((d) => addDays(d, 7));
+  const goThisWeek = () => setWeekStart(startOfWeek(new Date()));
 
-  const openPicker = (meal: MealType) => setPicker({ meal, step: 'course' });
-  const chooseCourse = (course: CourseType) => {
-    if (!picker) return;
-    setSelectedDishIds([]);
-    setPicker({ ...picker, step: 'dish', course });
-  };
-  const backToCourse = () => {
-    if (!picker) return;
-    setPicker({ meal: picker.meal, step: 'course' });
-    setSelectedDishIds([]);
-    setNewDishName('');
-  };
-  const closePicker = () => {
-    setPicker(null);
-    setSelectedDishIds([]);
-    setNewDishName('');
-  };
-
-  const toggleSelect = (dishId: string) => {
-    setSelectedDishIds((prev) =>
-      prev.includes(dishId) ? prev.filter((id) => id !== dishId) : [...prev, dishId]
-    );
-  };
-
-  const handleConfirmAdd = async () => {
-    if (!picker || !picker.course || selectedDishIds.length === 0) return;
-    setSaving(true);
-    try {
-      for (const dishId of selectedDishIds) {
-        await addDishToMeal(dateStr, picker.meal, picker.course, dishId);
-      }
-      await fetchDayMenu();
-      closePicker();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRemoveDish = async (meal: MealType, course: CourseType, dishId: string) => {
-    await removeDishFromMeal(dateStr, meal, course, dishId);
-    fetchDayMenu();
-  };
-
-  const handleCreateAndAdd = async () => {
-    const trimmed = newDishName.trim();
-    if (!trimmed) return;
-    setCreating(true);
-    try {
-      const newId = await insertDish({
-        name: trimmed,
-        category: [],
-        ingredients: [],
-        prepAhead: false,
-        source: '',
-        notes: '',
-        hasRecipe: false,
-        recipe: null,
-        courseTypes: picker?.course ? [picker.course] : [],
-        tags: [],
-      });
-      setNewDishName('');
-      await loadDishes();
-      setSelectedDishIds((prev) => [...prev, newId]);
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const isToday = dateStr === formatDate(new Date());
-  const dayIsEmpty =
-    !!menu &&
-    (['breakfast', 'lunch', 'dinner'] as const).every((meal) =>
-      COURSE_ORDER.every((course) => (menu[meal][course] || []).length === 0)
-    );
-
-  const dateLabel = `週${WEEKDAY_LABELS[currentDate.getDay()]} ${dateStr}`;
+  const weekLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()} – ${
+    weekEnd.getMonth() + 1
+  }/${weekEnd.getDate()}`;
 
   return (
     <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 'var(--space-3) 0' }}>菜單規劃</h1>
-        <SegmentedControl
-          options={[
-            { value: 'view', label: '檢視' },
-            { value: 'edit', label: '編輯' },
-          ]}
-          value={editMode ? 'edit' : 'view'}
-          onChange={setModeFromSegment}
-        />
-      </div>
+      <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 'var(--space-3) 0' }}>
+        菜單規劃
+      </h1>
 
       <div style={{ marginBottom: 'var(--space-4)' }}>
-        <DateSwitcher label={dateLabel} onPrev={goPrevDay} onNext={goNextDay} isToday={isToday} onToday={goToday} />
+        <DateSwitcher
+          label={weekLabel}
+          onPrev={goPrevWeek}
+          onNext={goNextWeek}
+          isToday={isCurrentWeek}
+          onToday={goThisWeek}
+        />
       </div>
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-5) 0' }}>
           <Spinner />
         </div>
-      ) : dayIsEmpty && !editMode ? (
-        <EmptyState
-          icon="📅"
-          title="這天還沒有安排菜單"
-          action={<Button onClick={() => setModeFromSegment('edit')}>開始安排</Button>}
-        />
       ) : (
-        (['breakfast', 'lunch', 'dinner'] as const).map((meal) => {
-          const mealIsEmpty = COURSE_ORDER.every((course) => (menu?.[meal][course] || []).length === 0);
-          if (mealIsEmpty && !editMode) return null;
-
-          return (
-            <Card key={meal} style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-              <div style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', marginBottom: 'var(--space-3)' }}>{MEAL_LABELS[meal]}</div>
-
-              {COURSE_ORDER.map((course) => {
-                const dishIds = menu?.[meal][course] || [];
-                if (dishIds.length === 0) return null;
-                return (
-                  <div key={course} style={{ marginBottom: 'var(--space-2)', paddingLeft: 'var(--space-2)', borderLeft: '3px solid var(--color-border)' }}>
-                    <div style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>{COURSE_LABELS[course]}</div>
-                    <div>
-                      {dishIds.map((dishId) => (
-                        <div
-                          key={dishId}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: 'var(--space-2) 4px',
-                            borderBottom: '1px solid var(--color-surface-sunken)',
-                            font: 'var(--font-body)',
-                          }}
-                        >
-                          {dishNameOf(dishId)}
-                          {editMode && (
-                            <IconButton
-                              icon="×"
-                              label="移除這道菜"
-                              danger
-                              onClick={() => handleRemoveDish(meal, course, dishId)}
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {mealIsEmpty && editMode && (
-                <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)', margin: '2px 0 var(--space-3)' }}>還沒安排</p>
-              )}
-
-              {editMode && (
-                <Button variant="secondary" fullWidth onClick={() => openPicker(meal)} style={{ marginTop: 'var(--space-2)' }}>
-                  + 新增菜色
-                </Button>
-              )}
-            </Card>
-          );
-        })
-      )}
-
-      <Modal
-        open={!!picker}
-        onClose={closePicker}
-        title={
-          picker?.step === 'course'
-            ? `新增到${MEAL_LABELS[picker.meal]}——選擇分類`
-            : picker
-            ? `勾選要加入「${COURSE_LABELS[picker.course!]}」的菜色`
-            : undefined
-        }
-      >
-        {picker?.step === 'course' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-            {COURSE_ORDER.map((course) => (
-              <Button key={course} variant="secondary" size="sm" onClick={() => chooseCourse(course)}>
-                {COURSE_LABELS[course]}
-              </Button>
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '52px repeat(3, 1fr)',
+              padding: 'var(--space-2) var(--space-3)',
+              borderBottom: '1px solid var(--color-border)',
+            }}
+          >
+            <span />
+            {(['breakfast', 'lunch', 'dinner'] as const).map((meal) => (
+              <span
+                key={meal}
+                style={{
+                  font: 'var(--font-caption)',
+                  color: 'var(--color-text-placeholder)',
+                  textAlign: 'center',
+                }}
+              >
+                {MEAL_LABELS[meal]}
+              </span>
             ))}
           </div>
-        )}
 
-        {picker?.step === 'dish' && (
-          <>
-            <button
-              type="button"
-              onClick={backToCourse}
-              style={{ border: 'none', background: 'none', cursor: 'pointer', font: 'var(--font-caption)', color: 'var(--color-text-secondary)', padding: 0, marginBottom: 'var(--space-3)' }}
-            >
-              ‹ 換一個分類
-            </button>
+          {weekDays.map((date, i) => {
+            const dateStr = formatDate(date);
+            const day = menus[dateStr];
+            const isToday = dateStr === todayStr;
 
-            <div style={{ maxHeight: 240, overflowY: 'auto', marginBottom: 'var(--space-3)' }}>
-              {allDishes.length === 0 ? (
-                <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)' }}>還沒有菜色可選</p>
-              ) : (
-                allDishes.map((dish) => (
-                  <div key={dish.id} style={{ padding: 'var(--space-1) 0' }}>
-                    <Checkbox
-                      label={dish.name}
-                      checked={selectedDishIds.includes(dish.id)}
-                      onChange={() => toggleSelect(dish.id)}
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-              <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', margin: '0 0 var(--space-2)' }}>找不到想要的菜?直接新增:</p>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                <div style={{ flex: 1 }}>
-                  <Input
-                    value={newDishName}
-                    onChange={(e) => setNewDishName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCreateAndAdd())}
-                    placeholder="輸入新菜名"
-                  />
-                </div>
-                <Button
-                  variant="secondary"
-                  onClick={handleCreateAndAdd}
-                  loading={creating}
-                  disabled={!newDishName.trim()}
-                >
-                  建立並勾選
-                </Button>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <Button variant="secondary" fullWidth onClick={closePicker}>取消</Button>
-              <Button
-                fullWidth
-                onClick={handleConfirmAdd}
-                loading={saving}
-                disabled={selectedDishIds.length === 0}
+            return (
+              <div
+                key={dateStr}
+                onClick={() => navigate(`/menu/${dateStr}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && navigate(`/menu/${dateStr}`)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '52px repeat(3, 1fr)',
+                  padding: 'var(--space-2) var(--space-3)',
+                  borderBottom: i < 6 ? '1px solid var(--color-border)' : 'none',
+                  background: isToday ? 'var(--color-primary-soft)' : 'transparent',
+                  cursor: 'pointer',
+                  alignItems: 'flex-start',
+                  gap: 4,
+                }}
               >
-                確認新增{selectedDishIds.length > 0 ? `(${selectedDishIds.length})` : ''}
-              </Button>
-            </div>
-          </>
-        )}
-      </Modal>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}>
+                    週{WEEKDAY_LABELS[i]}
+                  </span>
+                  <span
+                    style={{
+                      font: 'var(--font-label)',
+                      color: isToday ? 'var(--color-primary)' : 'var(--color-text)',
+                    }}
+                  >
+                    {date.getMonth() + 1}/{date.getDate()}
+                  </span>
+                </div>
+
+                {(['breakfast', 'lunch', 'dinner'] as const).map((meal) => {
+                  const items = day ? flattenMeal(day[meal]) : [];
+                  const shown = items.slice(0, MAX_CHIPS_PER_MEAL);
+                  const remaining = items.length - shown.length;
+
+                  return (
+                    <div
+                      key={meal}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 2,
+                        minWidth: 0,
+                      }}
+                    >
+                      {shown.length === 0 ? (
+                        <span style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)' }}>
+                          +
+                        </span>
+                      ) : (
+                        <>
+                          {shown.map(({ dishId, course }) => (
+                            <Tag key={dishId} color={COURSE_TAG_COLOR[course]}>
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  maxWidth: 72,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  verticalAlign: 'bottom',
+                                }}
+                              >
+                                {dishNameOf(dishId)}
+                              </span>
+                            </Tag>
+                          ))}
+                          {remaining > 0 && (
+                            <span
+                              style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)' }}
+                            >
+                              +{remaining}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </Card>
+      )}
+
+      <p
+        style={{
+          font: 'var(--font-caption)',
+          color: 'var(--color-text-placeholder)',
+          textAlign: 'center',
+          marginTop: 'var(--space-3)',
+        }}
+      >
+        點任一天可進入編輯
+      </p>
     </div>
   );
 }
