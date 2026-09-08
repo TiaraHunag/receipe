@@ -11,7 +11,7 @@ import {
   Dish,
 } from '../db';
 import { Card, DateSwitcher, Spinner, Tag } from '../components';
-import type { TagColorKey } from '../components';
+import { COURSE_TAG_COLOR } from '../courseColors';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: '早餐',
@@ -20,20 +20,6 @@ const MEAL_LABELS: Record<MealType, string> = {
 };
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
-
-/**
- * 課程分類 → Tag 顏色的固定對應。
- * 純粹是週總覽格子裡用來區分「這道菜屬於主食/主菜/…」的視覺提示,
- * 跟模組四的食材分類色盤無關,只是借用同一份 9 色 Tag 元件。
- */
-const COURSE_TAG_COLOR: Record<CourseType, TagColorKey> = {
-  staple: 'yellow',
-  main: 'red',
-  side: 'orange',
-  vegetable: 'green',
-  soup: 'blue',
-  extra: 'purple',
-};
 
 /** 每個餐格最多顯示幾道菜名,超過的用「+N」代替 */
 const MAX_CHIPS_PER_MEAL = 2;
