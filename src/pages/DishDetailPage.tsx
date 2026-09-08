@@ -49,6 +49,7 @@ function DishDetailPage() {
   if (!dish) return <div style={{ padding: 'var(--space-4)', color: 'var(--color-text-secondary)' }}>找不到這道菜</div>;
 
   const sourceIsUrl = !!dish.source && /^https?:\/\//.test(dish.source);
+  const recipeSourceUrl = dish.recipe?.sourceUrl || '';
 
   const handleDelete = async () => {
     if (!id) return;
@@ -145,8 +146,8 @@ function DishDetailPage() {
         <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)' }}>
           <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: '0 0 var(--space-3)' }}>食譜內容</h2>
 
-          {sourceIsUrl && (
-            <a href={dish.source} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 'var(--space-4)' }}>
+          {recipeSourceUrl && (
+            <a href={recipeSourceUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 'var(--space-4)' }}>
               <Button type="button" variant="danger" size="sm">🔗 查看原始食譜</Button>
             </a>
           )}

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS dishes (
   notes TEXT,
   hasRecipe INTEGER DEFAULT 0,
   recipeCoverPhotoPath TEXT,
+  recipeSourceUrl TEXT,
   recipeContent TEXT,
   courseTypes TEXT DEFAULT '[]',
   tags TEXT DEFAULT '[]',
@@ -31,6 +32,7 @@ async function ensureDishesSchema(database: SQLiteDBConnection): Promise<void> {
   const requiredColumns: { name: string; ddl: string }[] = [
     { name: 'courseTypes', ddl: "ALTER TABLE dishes ADD COLUMN courseTypes TEXT DEFAULT '[]';" },
     { name: 'tags', ddl: "ALTER TABLE dishes ADD COLUMN tags TEXT DEFAULT '[]';" },
+    { name: 'recipeSourceUrl', ddl: "ALTER TABLE dishes ADD COLUMN recipeSourceUrl TEXT DEFAULT '';" },
   ];
   for (const col of requiredColumns) {
     if (!columns.includes(col.name)) {
@@ -107,6 +109,7 @@ export interface Dish {
   hasRecipe: boolean;
   recipe?: {
     coverPhotoPath: string;
+    sourceUrl: string;
     content: { type: 'text' | 'image'; text?: string; path?: string }[];
   } | null;
   courseTypes: CourseType[];
@@ -128,6 +131,7 @@ function rowToDish(row: any): Dish {
     recipe: row.hasRecipe
       ? {
           coverPhotoPath: row.recipeCoverPhotoPath || '',
+          sourceUrl: row.recipeSourceUrl || '',
           content: row.recipeContent ? JSON.parse(row.recipeContent) : [],
         }
       : null,
@@ -166,8 +170,8 @@ export async function insertDish(
   const now = new Date().toISOString();
   await database.run(
     `INSERT INTO dishes
-      (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeContent, courseTypes, tags, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeSourceUrl, recipeContent, courseTypes, tags, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       id,
       data.name,
@@ -178,6 +182,7 @@ export async function insertDish(
       data.notes,
       data.hasRecipe ? 1 : 0,
       data.recipe?.coverPhotoPath || '',
+      data.recipe?.sourceUrl || '',
       JSON.stringify(data.recipe?.content || []),
       JSON.stringify(data.courseTypes || []),
       JSON.stringify(data.tags || []),
@@ -199,7 +204,7 @@ export async function updateDish(
   await database.run(
     `UPDATE dishes SET
       name = ?, category = ?, ingredients = ?, prepAhead = ?, source = ?, notes = ?,
-      hasRecipe = ?, recipeCoverPhotoPath = ?, recipeContent = ?, courseTypes = ?, tags = ?, updatedAt = ?
+      hasRecipe = ?, recipeCoverPhotoPath = ?, recipeSourceUrl = ?, recipeContent = ?, courseTypes = ?, tags = ?, updatedAt = ?
      WHERE id = ?;`,
     [
       data.name,
@@ -210,6 +215,7 @@ export async function updateDish(
       data.notes,
       data.hasRecipe ? 1 : 0,
       data.recipe?.coverPhotoPath || '',
+      data.recipe?.sourceUrl || '',
       JSON.stringify(data.recipe?.content || []),
       JSON.stringify(data.courseTypes || []),
       JSON.stringify(data.tags || []),
@@ -452,8 +458,8 @@ export async function importDishesFromJSON(jsonText: string): Promise<number> {
   for (const d of dishes) {
     await database.run(
       `INSERT OR REPLACE INTO dishes
-        (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeContent, courseTypes, tags, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeSourceUrl, recipeContent, courseTypes, tags, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         d.id,
         d.name,
@@ -464,6 +470,7 @@ export async function importDishesFromJSON(jsonText: string): Promise<number> {
         d.notes || '',
         d.hasRecipe ? 1 : 0,
         d.recipe?.coverPhotoPath || '',
+        d.recipe?.sourceUrl || '',
         JSON.stringify(d.recipe?.content || []),
         JSON.stringify(d.courseTypes || []),
         JSON.stringify(d.tags || []),

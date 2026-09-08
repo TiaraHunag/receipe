@@ -52,6 +52,7 @@ function DishFormPage() {
 
   const [hasRecipe, setHasRecipe] = useState(false);
   const [content, setContent] = useState<ContentBlock[]>([]);
+  const [recipeSourceUrl, setRecipeSourceUrl] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [loadingData, setLoadingData] = useState(isEditMode);
@@ -96,6 +97,7 @@ function DishFormPage() {
         setNotes(data.notes);
         setHasRecipe(data.hasRecipe);
         setContent(data.recipe?.content || []);
+        setRecipeSourceUrl(data.recipe?.sourceUrl || '');
       }
       setLoadingData(false);
     };
@@ -185,7 +187,7 @@ function DishFormPage() {
         source,
         notes,
         hasRecipe,
-        recipe: hasRecipe ? { coverPhotoPath: '', content } : null,
+        recipe: hasRecipe ? { coverPhotoPath: '', sourceUrl: recipeSourceUrl.trim(), content } : null,
         courseTypes,
         tags,
       };
@@ -410,7 +412,13 @@ function DishFormPage() {
         </div>
 
         <div style={{ marginBottom: 'var(--space-5)' }}>
-          <Input label="來源" value={source} onChange={(e) => setSource(e.target.value)} />
+          <Input
+            label="來源"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder="選填,例如:阿嬤的做法、某本食譜書"
+            hint="自由填寫,不一定要是網址;食譜的原始連結請填在下面「有詳細食譜」展開後的欄位"
+          />
         </div>
 
         <div style={{ marginBottom: 'var(--space-5)' }}>
@@ -426,6 +434,15 @@ function DishFormPage() {
             <label style={{ font: 'var(--font-label)', color: 'var(--color-text)', display: 'block', marginBottom: 'var(--space-3)' }}>
               食譜內容
             </label>
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <Input
+                label="食譜原始連結(選填)"
+                value={recipeSourceUrl}
+                onChange={(e) => setRecipeSourceUrl(e.target.value)}
+                placeholder="例如:IG 貼文或食譜網站連結"
+                hint="有填的話,詳細頁的食譜內容區塊會出現「查看原始食譜」按鈕"
+              />
+            </div>
             {content.map((block, i) => (
               <div key={i} style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', alignItems: 'flex-start' }}>
                 <span style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', minWidth: 40, paddingTop: 10 }}>

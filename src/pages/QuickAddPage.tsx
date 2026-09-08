@@ -40,11 +40,12 @@ function QuickAddPage() {
         category: [],
         ingredients: [],
         prepAhead: false,
-        source: url,
+        source: '',
         notes: '',
         hasRecipe: true,
         recipe: {
           coverPhotoPath: '',
+          sourceUrl: url,
           content: [{ type: 'text', text: pastedText.trim() }],
         },
         courseTypes: [],
@@ -84,7 +85,7 @@ function QuickAddPage() {
             rows={7}
             placeholder="例如:IG 貼文連結,或整段複製下來的做法文字"
             error={textError || undefined}
-            hint={textError ? undefined : '如果內容裡有網址,會自動偵測存到「來源」欄位;其餘文字會先整段存進食譜內容,之後可以再拆成一步一步的步驟。'}
+            hint={textError ? undefined : '如果內容裡有網址,會自動偵測存到「食譜原始連結」;其餘文字會先整段存進食譜內容,之後可以再拆成一步一步的步驟。'}
           />
         </div>
 
