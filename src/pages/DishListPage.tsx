@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   getAllDishes,
   getAllIngredients,
+  getAllTags,
   addDishToMeal,
   Dish,
   MealType,
@@ -76,6 +77,7 @@ function DishListPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [ingredientOptions, setIngredientOptions] = useState<string[]>([]);
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [groupMode, setGroupMode] = useState<GroupMode>('course');
   const [searchIngredient, setSearchIngredient] = useState('');
 
@@ -91,6 +93,8 @@ function DishListPage() {
       setDishes(results);
       const ings = await getAllIngredients();
       setIngredientOptions(ings);
+      const tags = await getAllTags();
+      setTagOptions(tags);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -107,10 +111,18 @@ function DishListPage() {
 
   const searchResults = useMemo(() => {
     if (!isSearching) return [];
-    return dishes.filter((dish) =>
-      dish.ingredients.some((ing) => ing.toLowerCase().includes(searchTerm))
+    return dishes.filter(
+      (dish) =>
+        dish.ingredients.some((ing) => ing.toLowerCase().includes(searchTerm)) ||
+        (dish.tags || []).some((tag) => tag.toLowerCase().includes(searchTerm))
     );
   }, [dishes, searchTerm, isSearching]);
+
+  /** 搜尋自動建議:合併食材與標籤,去重 */
+  const searchSuggestions = useMemo(
+    () => Array.from(new Set([...ingredientOptions, ...tagOptions])).sort(),
+    [ingredientOptions, tagOptions]
+  );
 
   const groups: Group[] = useMemo(() => {
     if (isSearching) return [];
@@ -251,11 +263,11 @@ function DishListPage() {
 
       <div style={{ marginBottom: 'var(--space-4)' }}>
         <Input
-          aria-label="搜尋食材"
+          aria-label="搜尋食材或標籤"
           value={searchIngredient}
           onChange={(e) => setSearchIngredient(e.target.value)}
-          placeholder="搜尋食材,例如:雞肉"
-          suggestions={ingredientOptions}
+          placeholder="搜尋食材或標籤,例如:雞肉"
+          suggestions={searchSuggestions}
         />
       </div>
 
@@ -305,6 +317,11 @@ function DishListPage() {
                       {dish.courseTypes.map((c) => (
                         <Tag key={c} color={COURSE_TAG_COLOR[c]}>
                           {COURSE_LABELS[c]}
+                        </Tag>
+                      ))}
+                      {(dish.tags || []).map((t) => (
+                        <Tag key={t} color="grey">
+                          #{t}
                         </Tag>
                       ))}
                     </div>

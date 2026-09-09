@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { insertDish } from '../db';
-import { Input, Textarea, Button } from '../components';
+import { Input, Textarea, Button, Card, Spinner } from '../components';
+import { fetchIgPreview, isInstagramUrl, IgPreview } from '../igPreview';
 
 function extractUrl(text: string): string {
   const match = text.match(/https?:\/\/[^\s]+/);
   return match ? match[0] : '';
 }
+
+type IgPreviewStatus = 'idle' | 'loading' | 'found' | 'not-found';
 
 function QuickAddPage() {
   const navigate = useNavigate();
@@ -15,6 +18,31 @@ function QuickAddPage() {
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [textError, setTextError] = useState<string | null>(null);
+
+  const [igPreviewStatus, setIgPreviewStatus] = useState<IgPreviewStatus>('idle');
+  const [igPreview, setIgPreview] = useState<IgPreview | null>(null);
+
+  const detectedUrl = useMemo(() => extractUrl(pastedText), [pastedText]);
+  const isIgUrl = useMemo(() => (detectedUrl ? isInstagramUrl(detectedUrl) : false), [detectedUrl]);
+
+  // 網址內容變了(使用者換貼一則新連結),先前的預覽結果就失效,清掉避免誤導
+  useEffect(() => {
+    setIgPreviewStatus('idle');
+    setIgPreview(null);
+  }, [detectedUrl]);
+
+  const handleFetchIgPreview = async () => {
+    if (!detectedUrl) return;
+    setIgPreviewStatus('loading');
+    setIgPreview(null);
+    const result = await fetchIgPreview(detectedUrl);
+    if (result) {
+      setIgPreview(result);
+      setIgPreviewStatus('found');
+    } else {
+      setIgPreviewStatus('not-found');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +105,7 @@ function QuickAddPage() {
           />
         </div>
 
-        <div style={{ marginBottom: 'var(--space-5)' }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Textarea
             label="貼上連結或文字內容 *"
             value={pastedText}
@@ -88,6 +116,45 @@ function QuickAddPage() {
             hint={textError ? undefined : '如果內容裡有網址,會自動偵測存到「食譜原始連結」;其餘文字會先整段存進食譜內容,之後可以再拆成一步一步的步驟。'}
           />
         </div>
+
+        {isIgUrl && (
+          <div style={{ marginBottom: 'var(--space-5)' }}>
+            {igPreviewStatus === 'idle' && (
+              <Button type="button" variant="secondary" onClick={handleFetchIgPreview}>
+                🔍 確認一下抓到的是哪則貼文
+              </Button>
+            )}
+
+            {igPreviewStatus === 'loading' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <Spinner size="sm" />
+                <span style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}>
+                  正在讀取預覽…(僅原生 App 環境可用,StackBlitz 預覽會抓不到)
+                </span>
+              </div>
+            )}
+
+            {igPreviewStatus === 'found' && igPreview && (
+              <Card style={{ padding: 'var(--space-3)' }}>
+                <div style={{ font: 'var(--font-label)', color: 'var(--color-text)', marginBottom: 4 }}>
+                  @{igPreview.account}
+                </div>
+                <div style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}>
+                  {igPreview.snippet}
+                </div>
+                <div style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)', marginTop: 8 }}>
+                  僅供確認貼文,食譜內容還是要自己貼上或補齊喔
+                </div>
+              </Card>
+            )}
+
+            {igPreviewStatus === 'not-found' && (
+              <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}>
+                抓不到這則貼文的預覽,沒關係,直接繼續用文字內容就好。
+              </p>
+            )}
+          </div>
+        )}
 
         <Button type="submit" loading={saving} fullWidth>
           {saving ? '建立中...' : '建立草稿並繼續編輯'}
