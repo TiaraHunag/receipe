@@ -1,35 +1,64 @@
-.field {
-    display: flex;
-    flex-direction: column;
+/* ============================================================================
+   src/components/Checkbox/Checkbox.module.css (完整覆蓋 — 修正 bug)
+   原檔案內容其實是 Select.module.css 的複製貼上(class 名稱完全不對),
+   Checkbox.tsx 用到的 .row/.box/.input/.label 從來沒被定義過。
+   ============================================================================ */
+   .row {
+    display: inline-flex;
+    align-items: center;
     gap: var(--space-2);
+    cursor: pointer;
+    user-select: none;
   }
   
-  .label {
-    font: var(--font-label);
-    color: var(--color-text);
+  .input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
   }
   
-  .select {
-    min-height: var(--tap-target);
-    padding: 0 var(--space-3);
-    font: var(--font-body);
-    color: var(--color-text);
+  .box {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 5px;
     background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-control);
-    transition: border-color var(--transition-fast);
+    position: relative;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
   }
   
-  .select:focus {
-    outline: none;
+  .box::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid var(--color-text-inverse);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+  }
+  
+  .input:checked + .box {
+    background: var(--color-primary);
     border-color: var(--color-primary);
   }
   
-  .selectError {
-    border-color: var(--color-danger);
+  .input:checked + .box::after {
+    opacity: 1;
   }
   
-  .error {
-    font: var(--font-caption);
-    color: var(--color-danger);
+  .input:focus-visible + .box {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  
+  .label {
+    font: var(--font-body);
+    color: var(--color-text);
   }

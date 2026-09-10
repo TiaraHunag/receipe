@@ -1,13 +1,18 @@
+// ============================================================================
+// src/pages/MenuPage.tsx (完整覆蓋 — 週起始日改為讀取個人設定,而非寫死週日)
+// ============================================================================
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   getMenusInRange,
   getAllDishes,
+  getWeekStartDay,
   MenuDay,
   MealType,
   CourseType,
   MealCourses,
   COURSE_ORDER,
+  WEEKDAY_LABELS,
   Dish,
 } from '../db';
 import { Card, DateSwitcher, Spinner, Tag } from '../components';
@@ -19,8 +24,6 @@ const MEAL_LABELS: Record<MealType, string> = {
   dinner: '晚餐',
 };
 
-const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
-
 /** 每個餐格最多顯示幾道菜名,超過的用「+N」代替 */
 const MAX_CHIPS_PER_MEAL = 2;
 
@@ -31,10 +34,12 @@ function formatDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function startOfWeek(d: Date): Date {
+/** 依「一週起始日」設定計算某天所在週的第一天,weekStartDay 0-6 對應 Date.getDay() */
+function startOfWeek(d: Date, weekStartDay: number): Date {
   const copy = new Date(d);
   copy.setHours(0, 0, 0, 0);
-  copy.setDate(copy.getDate() - copy.getDay());
+  const diff = (copy.getDay() - weekStartDay + 7) % 7;
+  copy.setDate(copy.getDate() - diff);
   return copy;
 }
 
@@ -59,7 +64,8 @@ function flattenMeal(courses: MealCourses): MealItem[] {
 
 function MenuPage() {
   const navigate = useNavigate();
-  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  const [weekStartDay, setWeekStartDayState] = useState(0);
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), 0));
   const [menus, setMenus] = useState<Record<string, MenuDay>>({});
   const [allDishes, setAllDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +77,10 @@ function MenuPage() {
 
   useEffect(() => {
     getAllDishes().then(setAllDishes);
+    getWeekStartDay().then((day) => {
+      setWeekStartDayState(day);
+      setWeekStart(startOfWeek(new Date(), day));
+    });
   }, []);
 
   useEffect(() => {
@@ -88,7 +98,7 @@ function MenuPage() {
 
   const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
   const goNextWeek = () => setWeekStart((d) => addDays(d, 7));
-  const goThisWeek = () => setWeekStart(startOfWeek(new Date()));
+  const goThisWeek = () => setWeekStart(startOfWeek(new Date(), weekStartDay));
 
   const weekLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()} – ${
     weekEnd.getMonth() + 1
@@ -164,7 +174,7 @@ function MenuPage() {
               >
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}>
-                    週{WEEKDAY_LABELS[i]}
+                    週{WEEKDAY_LABELS[date.getDay()]}
                   </span>
                   <span
                     style={{

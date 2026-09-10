@@ -1,3 +1,6 @@
+// ============================================================================
+// src/db.ts (完整覆蓋 — 新增 fridge_items 真實庫存表,取代 ingredients_master.inStock)
+// ============================================================================
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { Capacitor } from '@capacitor/core';
 
@@ -52,9 +55,19 @@ CREATE TABLE IF NOT EXISTS ingredient_categories (
 const CREATE_INGREDIENTS_MASTER_TABLE = `
 CREATE TABLE IF NOT EXISTS ingredients_master (
   name TEXT PRIMARY KEY,
-  categoryId TEXT
+  categoryId TEXT,
+  inStock INTEGER DEFAULT 0
 );
 `;
+
+// 舊版本的 ingredients_master 沒有 inStock 欄位,補上(欄位本身保留,但下面已經不再用它記錄冰箱狀態了,只是舊資料搬移時會讀一次)。
+async function ensureIngredientsMasterSchema(database: SQLiteDBConnection): Promise<void> {
+  const res = await database.query('PRAGMA table_info(ingredients_master);');
+  const columns = (res.values || []).map((row: any) => row.name as string);
+  if (!columns.includes('inStock')) {
+    await database.execute('ALTER TABLE ingredients_master ADD COLUMN inStock INTEGER DEFAULT 0;');
+  }
+}
 
 const CREATE_MENUS_TABLE = `
 CREATE TABLE IF NOT EXISTS menus (
@@ -65,6 +78,57 @@ CREATE TABLE IF NOT EXISTS menus (
   updatedAt TEXT
 );
 `;
+
+// 通用設定表(key-value),目前用於「一週起始日」,之後有其他個人化設定也可以放這裡。
+const CREATE_SETTINGS_TABLE = `
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+`;
+
+// 採買清單裡「跟菜單無關、臨時想到要買」的額外項目。
+const CREATE_SHOPPING_EXTRA_ITEMS_TABLE = `
+CREATE TABLE IF NOT EXISTS shopping_extra_items (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  checked INTEGER DEFAULT 0,
+  createdAt TEXT
+);
+`;
+
+// 冰箱裡「真正現在有」的食材清單(獨立於食譜/分類系統,使用者自己新增/刪除)。
+const CREATE_FRIDGE_ITEMS_TABLE = `
+CREATE TABLE IF NOT EXISTS fridge_items (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  createdAt TEXT
+);
+`;
+
+const FRIDGE_MIGRATED_SETTING_KEY = 'fridgeMigratedFromInStock';
+
+// 舊版本用 ingredients_master.inStock 記錄「冰箱有沒有」,現在改成獨立的 fridge_items 表。
+// 這裡做一次性搬移,把舊資料轉過去,只跑一次(用 settings 表記錄是否已搬移過)。
+async function migrateInStockToFridgeItems(database: SQLiteDBConnection): Promise<void> {
+  const flagRes = await database.query('SELECT value FROM settings WHERE key = ?;', [FRIDGE_MIGRATED_SETTING_KEY]);
+  if (flagRes.values && flagRes.values.length > 0) return;
+
+  const res = await database.query('SELECT name FROM ingredients_master WHERE inStock = 1;');
+  const now = new Date().toISOString();
+  for (const row of res.values || []) {
+    await database.run('INSERT OR IGNORE INTO fridge_items (id, name, createdAt) VALUES (?, ?, ?);', [
+      crypto.randomUUID(),
+      row.name,
+      now,
+    ]);
+  }
+  await database.run(
+    `INSERT INTO settings (key, value) VALUES (?, '1')
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value;`,
+    [FRIDGE_MIGRATED_SETTING_KEY]
+  );
+}
 
 export async function initDB(): Promise<SQLiteDBConnection> {
   if (db) return db;
@@ -80,7 +144,12 @@ export async function initDB(): Promise<SQLiteDBConnection> {
   await ensureDishesSchema(db);
   await db.execute(CREATE_INGREDIENT_CATEGORIES_TABLE);
   await db.execute(CREATE_INGREDIENTS_MASTER_TABLE);
+  await ensureIngredientsMasterSchema(db);
   await db.execute(CREATE_MENUS_TABLE);
+  await db.execute(CREATE_SETTINGS_TABLE);
+  await db.execute(CREATE_SHOPPING_EXTRA_ITEMS_TABLE);
+  await db.execute(CREATE_FRIDGE_ITEMS_TABLE);
+  await migrateInStockToFridgeItems(db);
 
   return db;
 }
@@ -97,6 +166,9 @@ async function persistToStore(): Promise<void> {
     await sqlite.saveToStore('receipe_db');
   }
 }
+
+/** 星期標籤,index 對應 JS 的 Date.getDay()(0 = 週日)。菜單規劃/採買清單/個人設定共用。 */
+export const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
 export interface Dish {
   id: string;
@@ -145,7 +217,7 @@ function rowToDish(row: any): Dish {
 async function syncIngredientsToMaster(names: string[]): Promise<void> {
   const database = await getDB();
   for (const n of names) {
-    await database.run('INSERT OR IGNORE INTO ingredients_master (name, categoryId) VALUES (?, NULL);', [n]);
+    await database.run('INSERT OR IGNORE INTO ingredients_master (name, categoryId, inStock) VALUES (?, NULL, 0);', [n]);
   }
 }
 
@@ -317,7 +389,7 @@ export async function setIngredientCategory(
 ): Promise<void> {
   const database = await getDB();
   await database.run(
-    `INSERT INTO ingredients_master (name, categoryId) VALUES (?, ?)
+    `INSERT INTO ingredients_master (name, categoryId, inStock) VALUES (?, ?, 0)
      ON CONFLICT(name) DO UPDATE SET categoryId = excluded.categoryId;`,
     [ingredientName, categoryId]
   );
@@ -429,6 +501,209 @@ export async function removeDishFromMeal(
   const day = await getOrCreateMenuDay(date);
   day[meal][course] = day[meal][course].filter((d) => d !== dishId);
   await saveMenuDay(day);
+}
+
+// ---------------------------------------------------------------------------
+// 個人設定(settings 表,key-value)
+// ---------------------------------------------------------------------------
+
+export async function getSetting(key: string): Promise<string | null> {
+  const database = await getDB();
+  const res = await database.query('SELECT value FROM settings WHERE key = ?;', [key]);
+  if (!res.values || res.values.length === 0) return null;
+  return res.values[0].value as string;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const database = await getDB();
+  await database.run(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value;`,
+    [key, value]
+  );
+  await persistToStore();
+}
+
+const WEEK_START_DAY_KEY = 'weekStartDay';
+
+/** 一週起始日,0-6 對應 Date.getDay()(0 = 週日)。預設週日,可在「個人」頁修改。 */
+export async function getWeekStartDay(): Promise<number> {
+  const raw = await getSetting(WEEK_START_DAY_KEY);
+  const n = raw !== null ? parseInt(raw, 10) : 0;
+  return Number.isInteger(n) && n >= 0 && n <= 6 ? n : 0;
+}
+
+export async function setWeekStartDay(day: number): Promise<void> {
+  await setSetting(WEEK_START_DAY_KEY, String(day));
+}
+
+// ---------------------------------------------------------------------------
+// 冰箱庫存(真正的「現在有什麼」,跟食材分類、食譜完全獨立)
+// ---------------------------------------------------------------------------
+
+export interface FridgeItem {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+/** 冰箱管理頁顯示用:目前真正在冰箱裡的食材清單(使用者自己新增/刪除,不是從食譜推算)。 */
+export async function getFridgeItems(): Promise<FridgeItem[]> {
+  const database = await getDB();
+  const res = await database.query('SELECT * FROM fridge_items ORDER BY name;');
+  return (res.values || []) as FridgeItem[];
+}
+
+export async function addFridgeItem(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const database = await getDB();
+  await database.run('INSERT OR IGNORE INTO fridge_items (id, name, createdAt) VALUES (?, ?, ?);', [
+    crypto.randomUUID(),
+    trimmed,
+    new Date().toISOString(),
+  ]);
+  await persistToStore();
+}
+
+/** 用完了就從冰箱庫存移除;採買清單勾選「冰箱有」取消時也是呼叫這個。 */
+export async function removeFridgeItem(name: string): Promise<void> {
+  const database = await getDB();
+  await database.run('DELETE FROM fridge_items WHERE name = ?;', [name]);
+  await persistToStore();
+}
+
+// ---------------------------------------------------------------------------
+// 採買清單
+// ---------------------------------------------------------------------------
+
+export interface ShoppingListItem {
+  name: string;
+  /** 這項食材被這週菜單裡的哪些菜色用到 */
+  dishNames: string[];
+  categoryId: string | null;
+  categoryName: string | null;
+  color: string | null;
+  /** 冰箱內目前有沒有(來自 fridge_items) */
+  inStock: boolean;
+}
+
+/**
+ * 依日期區間(通常是一週)彙整菜單規劃裡用到的所有食材,
+ * 附上分類顏色與冰箱庫存狀態,供採買清單頁使用。
+ * 因為食材不記數量,這裡只做「有沒有用到 / 冰箱有沒有」的清單式彙整,不做採購量計算。
+ */
+export async function getShoppingListForRange(
+  startDate: string,
+  endDate: string
+): Promise<ShoppingListItem[]> {
+  const menus = await getMenusInRange(startDate, endDate);
+  const dishIdSet = new Set<string>();
+  Object.values(menus).forEach((day) => {
+    (['breakfast', 'lunch', 'dinner'] as MealType[]).forEach((meal) => {
+      COURSE_ORDER.forEach((course) => {
+        (day[meal][course] || []).forEach((id) => dishIdSet.add(id));
+      });
+    });
+  });
+
+  if (dishIdSet.size === 0) return [];
+
+  const database = await getDB();
+  const ids = Array.from(dishIdSet);
+  const placeholders = ids.map(() => '?').join(',');
+  const res = await database.query(
+    `SELECT id, name, ingredients FROM dishes WHERE id IN (${placeholders});`,
+    ids
+  );
+
+  const ingredientToDishNames = new Map<string, Set<string>>();
+  (res.values || []).forEach((row: any) => {
+    const dishName = row.name as string;
+    const ingredients: string[] = row.ingredients ? JSON.parse(row.ingredients) : [];
+    ingredients.forEach((ing) => {
+      if (!ingredientToDishNames.has(ing)) ingredientToDishNames.set(ing, new Set());
+      ingredientToDishNames.get(ing)!.add(dishName);
+    });
+  });
+
+  const categoryMap = await getIngredientCategoryMap();
+  const fridgeItems = await getFridgeItems();
+  const fridgeNames = new Set(fridgeItems.map((f) => f.name));
+
+  const items: ShoppingListItem[] = Array.from(ingredientToDishNames.entries()).map(
+    ([name, dishNamesSet]) => {
+      const info = categoryMap[name];
+      return {
+        name,
+        dishNames: Array.from(dishNamesSet).sort(),
+        categoryId: info?.categoryId || null,
+        categoryName: info?.categoryName || null,
+        color: info?.color || null,
+        inStock: fridgeNames.has(name),
+      };
+    }
+  );
+
+  items.sort((a, b) => {
+    if (a.inStock !== b.inStock) return a.inStock ? 1 : -1;
+    return a.name.localeCompare(b.name, 'zh-Hant');
+  });
+
+  return items;
+}
+
+export interface ShoppingExtraItem {
+  id: string;
+  name: string;
+  /** 是否已買(勾選後仍保留在清單,方便之後一次清除) */
+  checked: boolean;
+  createdAt: string;
+}
+
+/** 跟菜單無關、臨時想到要買的項目,例如衛生紙、調味料補貨等。 */
+export async function getShoppingExtraItems(): Promise<ShoppingExtraItem[]> {
+  const database = await getDB();
+  const res = await database.query('SELECT * FROM shopping_extra_items ORDER BY createdAt ASC;');
+  return (res.values || []).map((row: any) => ({
+    id: row.id,
+    name: row.name,
+    checked: Boolean(row.checked),
+    createdAt: row.createdAt,
+  }));
+}
+
+export async function addShoppingExtraItem(name: string): Promise<string> {
+  const database = await getDB();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await database.run(
+    'INSERT INTO shopping_extra_items (id, name, checked, createdAt) VALUES (?, ?, 0, ?);',
+    [id, name.trim(), now]
+  );
+  await persistToStore();
+  return id;
+}
+
+export async function toggleShoppingExtraItem(id: string, checked: boolean): Promise<void> {
+  const database = await getDB();
+  await database.run('UPDATE shopping_extra_items SET checked = ? WHERE id = ?;', [
+    checked ? 1 : 0,
+    id,
+  ]);
+  await persistToStore();
+}
+
+export async function deleteShoppingExtraItem(id: string): Promise<void> {
+  const database = await getDB();
+  await database.run('DELETE FROM shopping_extra_items WHERE id = ?;', [id]);
+  await persistToStore();
+}
+
+export async function clearCheckedShoppingExtraItems(): Promise<void> {
+  const database = await getDB();
+  await database.run('DELETE FROM shopping_extra_items WHERE checked = 1;');
+  await persistToStore();
 }
 
 export interface DishExport {
