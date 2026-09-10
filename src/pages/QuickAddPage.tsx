@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { insertDish } from '../db';
 import { Input, Textarea, Button, Card, Spinner } from '../components';
 import { fetchIgPreview, isInstagramUrl, IgPreview } from '../igPreview';
@@ -13,6 +13,9 @@ type IgPreviewStatus = 'idle' | 'loading' | 'found' | 'not-found';
 
 function QuickAddPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const sharedText = (location.state as { sharedText?: string } | undefined)?.sharedText;
+
   const [name, setName] = useState('');
   const [pastedText, setPastedText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -43,6 +46,21 @@ function QuickAddPage() {
       setIgPreviewStatus('not-found');
     }
   };
+
+  // 從 Share Sheet 分享進來的內容,直接帶入既有的貼上欄位
+  useEffect(() => {
+    if (sharedText) {
+      setPastedText(sharedText);
+    }
+  }, [sharedText]);
+
+  // 分享進來的剛好是 IG 連結的話,自動抓一次預覽,省去使用者手動按一次
+  useEffect(() => {
+    if (sharedText && isIgUrl && igPreviewStatus === 'idle') {
+      handleFetchIgPreview();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedText, isIgUrl, igPreviewStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
