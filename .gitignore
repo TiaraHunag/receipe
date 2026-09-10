@@ -1,5 +1,6 @@
 node_modules
 dist
+.DS_Store
 
 # Xcode 使用者層級設定(因人/因電腦而異,不需要共用版本控管)
 ios/App/Pods
