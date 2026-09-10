@@ -248,7 +248,6 @@ function DishListPage() {
         minHeight: '100vh',
       }}
     >
-      <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: '12px 0' }}>食譜</h1>
 
       <div style={{ marginBottom: 'var(--space-2)' }}>
         <SegmentedControl

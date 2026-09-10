@@ -76,7 +76,6 @@ function IngredientManagementPage() {
   return (
     <div style={{ padding: 'var(--space-4)', maxWidth: 700, margin: '0 auto', paddingBottom: 96 }}>
       <Link to="/" style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', textDecoration: 'none' }}>← 返回菜色列表</Link>
-      <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 'var(--space-3) 0 var(--space-4)' }}>冰箱管理</h1>
 
       <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: '0 0 var(--space-1)' }}>
         🧊 冰箱庫存({fridgeItems.length})

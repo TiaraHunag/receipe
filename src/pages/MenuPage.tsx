@@ -1,5 +1,5 @@
 // ============================================================================
-// src/pages/MenuPage.tsx (完整覆蓋 — 週起始日改為讀取個人設定,而非寫死週日)
+// src/pages/MenuPage.tsx (完整覆蓋 — 每格上限 2 → 3,讓主食/主菜/副菜都能顯示)
 // ============================================================================
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -11,7 +11,6 @@ import {
   MealType,
   CourseType,
   MealCourses,
-  COURSE_ORDER,
   WEEKDAY_LABELS,
   Dish,
 } from '../db';
@@ -24,8 +23,8 @@ const MEAL_LABELS: Record<MealType, string> = {
   dinner: '晚餐',
 };
 
-/** 每個餐格最多顯示幾道菜名,超過的用「+N」代替 */
-const MAX_CHIPS_PER_MEAL = 2;
+/** 每個餐格最多顯示幾道菜名,超過的用「+N」代替(主食/主菜/副菜三個分類都要露出,所以設 3) */
+const MAX_CHIPS_PER_MEAL = 3;
 
 function formatDate(d: Date): string {
   const y = d.getFullYear();
@@ -54,9 +53,12 @@ interface MealItem {
   course: CourseType;
 }
 
+/** 週總覽顯示主食/主菜/副菜,其他分類(蔬菜、湯品、附餐)太瑣碎,只在單日編輯頁才完整呈現。 */
+const WEEK_OVERVIEW_COURSES: CourseType[] = ['staple', 'main', 'side'];
+
 function flattenMeal(courses: MealCourses): MealItem[] {
   const list: MealItem[] = [];
-  COURSE_ORDER.forEach((course) => {
+  WEEK_OVERVIEW_COURSES.forEach((course) => {
     (courses[course] || []).forEach((dishId) => list.push({ dishId, course }));
   });
   return list;
@@ -106,11 +108,7 @@ function MenuPage() {
 
   return (
     <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96 }}>
-      <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 'var(--space-3) 0' }}>
-        菜單規劃
-      </h1>
-
-      <div style={{ marginBottom: 'var(--space-4)' }}>
+      <div style={{ marginTop: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
         <DateSwitcher
           label={weekLabel}
           onPrev={goPrevWeek}

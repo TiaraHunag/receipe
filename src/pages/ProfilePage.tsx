@@ -126,8 +126,6 @@ function ProfilePage() {
 
   return (
     <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96 }}>
-      <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: '12px 0' }}>個人</h1>
-
       <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-5)' }}>
         帳號與雲端備份功能還在規劃中。目前資料完全存在你的裝置本地,建議定期使用下方功能手動備份。
       </p>

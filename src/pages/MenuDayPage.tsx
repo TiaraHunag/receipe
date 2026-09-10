@@ -1,3 +1,6 @@
+// ============================================================================
+// src/pages/MenuDayPage.tsx (完整覆蓋 — 拿掉重複的「菜單規劃」標題)
+// ============================================================================
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -209,14 +212,11 @@ function MenuDayPage() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--space-2)',
+          justifyContent: 'space-between',
           margin: 'var(--space-3) 0',
         }}
       >
         <IconButton icon="‹" label="回到週總覽" onClick={() => navigate('/menu')} />
-        <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 0, flex: 1 }}>
-          菜單規劃
-        </h1>
         <SegmentedControl
           options={[
             { value: 'view', label: '檢視' },
