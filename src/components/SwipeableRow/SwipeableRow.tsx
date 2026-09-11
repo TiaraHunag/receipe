@@ -84,8 +84,12 @@ export function SwipeableRow({ children, actions, actionWidth = DEFAULT_ACTION_W
       // 原本是打開狀態，這次只是輕點一下 → 收合，並吃掉這次點擊，避免誤觸下方內容
       setTranslateX(0);
       suppressClickRef.current = true;
+    } else {
+      // 原本是關閉狀態、且移動量沒達到「拖曳」門檻(可能只是手指極輕微的晃動)——
+      // handlePointerMove 仍可能已經把 translateX 挪動了一點點，這裡強制歸零，
+      // 避免內容列沒有完全蓋住底下的動作按鈕，露出一條顏色縫隙
+      setTranslateX(0);
     }
-    // 其餘情況（原本是關閉狀態、且沒有拖曳）：什麼都不做，讓點擊正常穿透到內容裡的按鈕/checkbox
   };
 
   const handleClickCapture = (e: React.MouseEvent) => {

@@ -239,9 +239,13 @@ function MenuDayPage() {
           return (
             <Card
               key={meal}
-              interactive
               onClick={() => chooseMeal(meal)}
-              style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)', overflow: 'hidden' }}
+              style={{
+                padding: 'var(--space-4)',
+                marginBottom: 'var(--space-4)',
+                overflow: 'hidden',
+                cursor: 'pointer',
+              }}
             >
               <div
                 style={{
