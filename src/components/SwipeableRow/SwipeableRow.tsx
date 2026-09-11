@@ -76,8 +76,10 @@ export function SwipeableRow({ children, actions, actionWidth = DEFAULT_ACTION_W
     setDragging(false);
 
     if (movedRef.current) {
-      // 真的有拖曳：依放開時的位置判斷要打開還是彈回關閉
+      // 真的有拖曳：依放開時的位置判斷要打開還是彈回關閉，
+      // 並吃掉這次放手可能補發的 click，避免誤觸下方內容或外層容器的點擊事件
       setTranslateX((current) => (current <= -maxOpen * OPEN_THRESHOLD_RATIO ? -maxOpen : 0));
+      suppressClickRef.current = true;
     } else if (startTranslateRef.current < 0) {
       // 原本是打開狀態，這次只是輕點一下 → 收合，並吃掉這次點擊，避免誤觸下方內容
       setTranslateX(0);
@@ -103,7 +105,8 @@ export function SwipeableRow({ children, actions, actionWidth = DEFAULT_ACTION_W
             type="button"
             className={[styles.action, action.danger ? styles.danger : ''].filter(Boolean).join(' ')}
             style={{ width: actionWidth }}
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               close();
               action.onClick();
             }}

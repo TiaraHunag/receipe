@@ -1,5 +1,5 @@
 // ============================================================================
-// src/pages/MenuDayPage.tsx (完整覆蓋 — 拿掉前一天/後一天游標，只留回到週總覽這一個返回鍵)
+// src/pages/MenuDayPage.tsx (完整覆蓋 — 點餐別空白處＝新增，點菜色項目＝編輯)
 // ============================================================================
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -56,7 +56,8 @@ function parseDate(dateStr: string | undefined): Date {
 }
 
 /** 新增流程分三步:先選餐別(早/午/晚),再選分類,最後勾選菜色。
- *  入口從原本「每餐各自一個 + 按鈕」合併成畫面右下角單一 FAB。 */
+ *  入口從原本「每餐各自一個 + 按鈕」合併成畫面右下角單一 FAB;
+ *  點某一餐卡片的空白處會直接帶入該餐別,跳過選餐別那一步。 */
 type PickerState = {
   step: 'meal' | 'course' | 'dish';
   meal?: MealType;
@@ -236,7 +237,12 @@ function MenuDayPage() {
           const mealIsEmpty = COURSE_ORDER.every((course) => (menu?.[meal][course] || []).length === 0);
 
           return (
-            <Card key={meal} style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)', overflow: 'hidden' }}>
+            <Card
+              key={meal}
+              interactive
+              onClick={() => chooseMeal(meal)}
+              style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)', overflow: 'hidden' }}
+            >
               <div
                 style={{
                   font: 'var(--font-subtitle)',
@@ -280,22 +286,25 @@ function MenuDayPage() {
                             actions={[
                               {
                                 label: '編輯',
-                                icon: '✏️',
                                 onClick: () => navigate(`/edit/${dishId}`),
                               },
                               {
                                 label: '刪除',
-                                icon: '🗑',
                                 danger: true,
                                 onClick: () => handleRemoveDish(meal, course, dishId),
                               },
                             ]}
                           >
                             <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/edit/${dishId}`);
+                              }}
                               style={{
                                 padding: 'var(--space-2) 4px',
                                 borderBottom: '1px solid var(--color-surface-sunken)',
                                 font: 'var(--font-body)',
+                                cursor: 'pointer',
                               }}
                             >
                               {dishNameOf(dishId)}

@@ -298,12 +298,12 @@ function ShoppingListPage() {
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {extraItems.map((item) => (
                 <SwipeableRow
-                  key={item.id}
-                  actions={[
-                    { label: '編輯', icon: '✏️', onClick: () => openEditItem(item) },
-                    { label: '刪除', icon: '🗑', danger: true, onClick: () => handleDeleteExtra(item.id) },
-                  ]}
-                >
+                key={item.id}
+                actions={[
+                  { label: '編輯', onClick: () => openEditItem(item) },
+                  { label: '刪除', danger: true, onClick: () => handleDeleteExtra(item.id) },
+                ]}
+              >
                   <div
                     style={{
                       display: 'flex',
