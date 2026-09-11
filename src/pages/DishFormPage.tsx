@@ -1,7 +1,7 @@
 // ============================================================================
-// src/pages/DishFormPage.tsx (完整覆蓋 — 返回鍵/更新後改用 navigate(-1) 回到相對路徑上一頁,不寫死路徑;顏色改用統一色盤)
+// src/pages/DishFormPage.tsx (完整覆蓋 — 顏色改用統一色盤;修正新食材分類提示判斷邏輯;新增離開保護)
 // ============================================================================
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getDishById,
@@ -21,7 +21,19 @@ import {
   COURSE_ORDER,
 } from '../db';
 import IngredientTag from '../components/IngredientTag';
-import { TAG_COLOR_OPTIONS, getColor, Input, Textarea, Checkbox, Button, Tag, Card, IconButton, useToast } from '../components';
+import {
+  TAG_COLOR_OPTIONS,
+  getColor,
+  Input,
+  Textarea,
+  Checkbox,
+  Button,
+  Tag,
+  Card,
+  IconButton,
+  ConfirmDialog,
+  useToast,
+} from '../components';
 
 interface ContentBlock {
   type: 'text' | 'image';
@@ -71,6 +83,27 @@ function DishFormPage() {
   const [newCategoryColor, setNewCategoryColor] = useState(TAG_COLOR_OPTIONS[0].key);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
 
+  // ---- 離開保護:表單有未儲存變更時,攔截返回動作 ----
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const initialSnapshotRef = useRef<string>('');
+  const guardActiveRef = useRef(false);
+  const justSavedRef = useRef(false);
+
+  const serializeFormState = () =>
+    JSON.stringify({
+      name,
+      category,
+      tags,
+      courseTypes,
+      ingredients,
+      prepAhead,
+      source,
+      notes,
+      hasRecipe,
+      content,
+      recipeSourceUrl,
+    });
+
   const loadIngredientMeta = async () => {
     const [cats, map] = await Promise.all([getAllIngredientCategories(), getIngredientCategoryMap()]);
     setIngredientCategories(cats);
@@ -106,6 +139,72 @@ function DishFormPage() {
     fetchData();
   }, [id, isEditMode]);
 
+  // 資料載入完成(新增模式一開始就是預設空值,編輯模式等 fetch 完成)後,記一份「初始快照」,
+  // 之後拿目前表單內容跟這份快照比對,就知道使用者有沒有做過任何異動。
+  useEffect(() => {
+    if (loadingData) return;
+    if (initialSnapshotRef.current === '') {
+      initialSnapshotRef.current = serializeFormState();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingData]);
+
+  const isDirty =
+    !loadingData && initialSnapshotRef.current !== '' && serializeFormState() !== initialSnapshotRef.current;
+
+  // 有異動時,推一筆重複的歷史紀錄當防護:使用者按返回鍵/手勢返回會先觸發這筆紀錄的
+  // popstate,而不是直接離開頁面,讓我們有機會跳出確認彈窗。取消的話把防護紀錄補回去,
+  // 確認離開才真的再往前一步。
+  useEffect(() => {
+    if (!isDirty) {
+      guardActiveRef.current = false;
+      return;
+    }
+    if (!guardActiveRef.current) {
+      window.history.pushState(null, '', window.location.href);
+      guardActiveRef.current = true;
+    }
+    const handlePopState = () => {
+      if (justSavedRef.current) {
+        justSavedRef.current = false;
+        return;
+      }
+      setShowLeaveConfirm(true);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isDirty]);
+
+  // 分頁被關閉/重新整理時的最後一道防線(主要在瀏覽器/StackBlitz 測試環境有作用)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  const handleBackClick = () => {
+    if (isDirty) {
+      // 觸發跟原生返回手勢一樣的路徑,交給上面統一的 popstate 處理
+      window.history.back();
+    } else {
+      navigate(-1);
+    }
+  };
+
+  const handleConfirmLeave = () => {
+    setShowLeaveConfirm(false);
+    navigate(-1);
+  };
+
+  const handleCancelLeave = () => {
+    setShowLeaveConfirm(false);
+    window.history.pushState(null, '', window.location.href);
+  };
+
   const addCategoryValue = (value: string) => {
     const trimmed = value.trim();
     if (trimmed && !category.includes(trimmed)) setCategory([...category, trimmed]);
@@ -132,7 +231,10 @@ function DishFormPage() {
     const trimmed = value.trim();
     if (trimmed) {
       setIngredients([...ingredients, trimmed]);
-      if (!ingredientCategoryMap[trimmed]) {
+      // 只看「這個名字存不存在於 ingredientCategoryMap」不夠準——任何食材只要存過一次
+      // (哪怕當時沒選分類)就會留在 ingredients_master 裡,map 裡一定查得到,
+      // 這樣永遠不會再跳出分類提示。真正要看的是「有沒有實際指定 categoryId」。
+      if (!ingredientCategoryMap[trimmed]?.categoryId) {
         setPendingIngredient(trimmed);
       }
     }
@@ -196,9 +298,17 @@ function DishFormPage() {
 
       if (isEditMode && id) {
         await updateDish(id, payload);
-        navigate(-1);
+        justSavedRef.current = true;
+        if (guardActiveRef.current) {
+          // 存檔成功要離開時,先跳過我們自己塞進歷史紀錄裡的那筆防護紀錄,
+          // 再回到真正的上一頁,不然只會原地不動。
+          window.history.go(-2);
+        } else {
+          navigate(-1);
+        }
       } else {
         const newId = await insertDish(payload);
+        justSavedRef.current = true;
         navigate(`/dish/${newId}`);
       }
     } catch (err) {
@@ -210,10 +320,10 @@ function DishFormPage() {
   if (loadingData) return <div style={{ padding: 'var(--space-4)' }}>讀取中...</div>;
 
   return (
-    <div style={{ padding: 'var(--space-4)', maxWidth: 600, margin: '0 auto', paddingBottom: 96 }}>
+    <div style={{ padding: 'var(--space-4)', maxWidth: 600, margin: '0 auto', paddingBottom: 'calc(var(--space-6) + env(safe-area-inset-bottom, 0px))' }}>
       <button
         type="button"
-        onClick={() => navigate(-1)}
+        onClick={handleBackClick}
         style={{
           font: 'var(--font-caption)',
           color: 'var(--color-text-secondary)',
@@ -493,6 +603,16 @@ function DishFormPage() {
           {saving ? '儲存中...' : isEditMode ? '更新菜色' : '儲存菜色'}
         </Button>
       </form>
+
+      <ConfirmDialog
+        open={showLeaveConfirm}
+        title="放棄未儲存的內容?"
+        description="這道菜的編輯內容還沒儲存,離開後會遺失,確定要離開嗎?"
+        confirmLabel="離開"
+        danger
+        onConfirm={handleConfirmLeave}
+        onCancel={handleCancelLeave}
+      />
     </div>
   );
 }

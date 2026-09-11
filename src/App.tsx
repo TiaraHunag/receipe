@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import DishListPage from './pages/DishListPage';
 import DishFormPage from './pages/DishFormPage';
@@ -14,8 +14,14 @@ import BottomTabBar from './components/BottomTabBar';
 import { initDB } from './db';
 import SharedContent from './plugins/sharedContent';
 
+/** 新增/編輯食譜這兩個表單頁面不顯示底部 Tab Bar,避免填到一半誤觸切換分頁弄丟資料 */
+function shouldHideTabBar(pathname: string): boolean {
+  return pathname === '/new' || pathname.startsWith('/edit/');
+}
+
 function App() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     initDB().catch((err) => console.error('資料庫初始化失敗', err));
@@ -61,7 +67,7 @@ function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
-      <BottomTabBar />
+      {!shouldHideTabBar(location.pathname) && <BottomTabBar />}
     </>
   );
 }
