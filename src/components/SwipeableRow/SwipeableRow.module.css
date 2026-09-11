@@ -1,15 +1,20 @@
 .wrapper {
   position: relative;
+  display: grid;
   overflow: hidden;
   /* 允許垂直捲動穿透，水平拖曳交給 JS 處理 */
   touch-action: pan-y;
 }
 
+/* actions 跟 content 疊在同一個 grid 格子(column 1 / row 1)，
+   兩者的高度由 grid 統一計算、一起 stretch 到相同高度，
+   避免「絕對定位貼齊上下邊」跟「內容自然高度」兩種算法產生零點幾像素的誤差，
+   在邊框那條線露出底下動作按鈕的顏色。 */
 .actions {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+  align-self: stretch;
   display: flex;
 }
 
@@ -51,6 +56,9 @@
 }
 
 .content {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: stretch;
   position: relative;
   background: var(--color-surface);
   will-change: transform;
