@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getDishById, deleteDish, Dish, getIngredientCategoryMap, IngredientWithCategory } from '../db';
 import IngredientTag from '../components/IngredientTag';
-import { Button, Tag, ConfirmDialog, Spinner, useToast } from '../components';
+import { Button, Tag, ConfirmDialog, Spinner, useToast, colorForLabel } from '../components';
 
 function linkify(text: string): (string | JSX.Element)[] {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -83,7 +83,7 @@ function DishDetailPage() {
       {dish.category.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginBottom: dish.tags?.length ? 'var(--space-2)' : 'var(--space-5)' }}>
           {dish.category.map((c) => (
-            <Tag key={c}>{c}</Tag>
+            <Tag key={c} color={colorForLabel(c)}>{c}</Tag>
           ))}
         </div>
       )}

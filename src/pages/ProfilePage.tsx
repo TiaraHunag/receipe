@@ -13,8 +13,7 @@ import {
   WEEKDAY_LABELS,
   IngredientCategory,
 } from '../db';
-import { CATEGORY_COLORS, getColor } from '../colors';
-import { Card, Button, Select, ConfirmDialog, useToast } from '../components';
+import { TAG_COLOR_OPTIONS, getColor, Card, Button, Select, ConfirmDialog, useToast } from '../components';
 
 function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -25,7 +24,7 @@ function ProfilePage() {
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [categories, setCategories] = useState<IngredientCategory[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryColor, setNewCategoryColor] = useState(CATEGORY_COLORS[0].key);
+  const [newCategoryColor, setNewCategoryColor] = useState(TAG_COLOR_OPTIONS[0].key);
   const [deletingCategory, setDeletingCategory] = useState<IngredientCategory | null>(null);
   const { showToast } = useToast();
 
@@ -188,7 +187,7 @@ function ProfilePage() {
             placeholder="新分類名稱,例如:蔬菜"
             style={{ padding: 6, borderRadius: 'var(--radius-control)', border: '1px solid var(--color-border)', font: 'var(--font-body)' }}
           />
-          {CATEGORY_COLORS.map((c) => (
+          {TAG_COLOR_OPTIONS.map((c) => (
             <button
               key={c.key}
               type="button"

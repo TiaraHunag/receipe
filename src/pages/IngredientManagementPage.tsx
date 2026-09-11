@@ -12,7 +12,7 @@ import {
   IngredientWithCategory,
   FridgeItem,
 } from '../db';
-import { getColor } from '../colors';
+import { getColor } from '../components';
 import { Card, Input, Button, IconButton, EmptyState, Spinner, useToast } from '../components';
 
 function IngredientManagementPage() {

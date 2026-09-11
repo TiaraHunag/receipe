@@ -1,5 +1,5 @@
 // ============================================================================
-// src/pages/DishFormPage.tsx (完整覆蓋 — 返回鍵/更新後改用 navigate(-1) 回到相對路徑上一頁，不寫死路徑)
+// src/pages/DishFormPage.tsx (完整覆蓋 — 返回鍵/更新後改用 navigate(-1) 回到相對路徑上一頁,不寫死路徑;顏色改用統一色盤)
 // ============================================================================
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -20,9 +20,8 @@ import {
   COURSE_LABELS,
   COURSE_ORDER,
 } from '../db';
-import { CATEGORY_COLORS, getColor } from '../colors';
 import IngredientTag from '../components/IngredientTag';
-import { Input, Textarea, Checkbox, Button, Tag, Card, IconButton, useToast } from '../components';
+import { TAG_COLOR_OPTIONS, getColor, Input, Textarea, Checkbox, Button, Tag, Card, IconButton, useToast } from '../components';
 
 interface ContentBlock {
   type: 'text' | 'image';
@@ -69,7 +68,7 @@ function DishFormPage() {
   const [ingredientCategoryMap, setIngredientCategoryMap] = useState<Record<string, IngredientWithCategory>>({});
   const [pendingIngredient, setPendingIngredient] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryColor, setNewCategoryColor] = useState(CATEGORY_COLORS[0].key);
+  const [newCategoryColor, setNewCategoryColor] = useState(TAG_COLOR_OPTIONS[0].key);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
 
   const loadIngredientMeta = async () => {
@@ -398,7 +397,7 @@ function DishFormPage() {
                     placeholder="新分類名稱,例如:蔬菜"
                     style={{ padding: 6, borderRadius: 'var(--radius-control)', border: '1px solid var(--color-border)', font: 'var(--font-body)' }}
                   />
-                  {CATEGORY_COLORS.map((c) => (
+                  {TAG_COLOR_OPTIONS.map((c) => (
                     <button
                       key={c.key}
                       type="button"
