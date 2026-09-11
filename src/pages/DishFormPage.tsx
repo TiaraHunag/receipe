@@ -1,5 +1,8 @@
+// ============================================================================
+// src/pages/DishFormPage.tsx (完整覆蓋 — 返回鍵/更新後改用 navigate(-1) 回到相對路徑上一頁，不寫死路徑)
+// ============================================================================
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   getDishById,
   insertDish,
@@ -194,7 +197,7 @@ function DishFormPage() {
 
       if (isEditMode && id) {
         await updateDish(id, payload);
-        navigate(`/dish/${id}`);
+        navigate(-1);
       } else {
         const newId = await insertDish(payload);
         navigate(`/dish/${newId}`);
@@ -209,9 +212,20 @@ function DishFormPage() {
 
   return (
     <div style={{ padding: 'var(--space-4)', maxWidth: 600, margin: '0 auto', paddingBottom: 96 }}>
-      <Link to="/" style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
-        ← 返回列表
-      </Link>
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        style={{
+          font: 'var(--font-caption)',
+          color: 'var(--color-text-secondary)',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+        }}
+      >
+        ‹ 上一頁
+      </button>
       <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 'var(--space-3) 0 var(--space-4)' }}>
         {isEditMode ? '編輯菜色' : '新增菜色'}
       </h1>

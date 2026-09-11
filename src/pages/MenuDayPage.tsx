@@ -1,5 +1,5 @@
 // ============================================================================
-// src/pages/MenuDayPage.tsx (完整覆蓋 — 拿掉重複的「菜單規劃」標題)
+// src/pages/MenuDayPage.tsx (完整覆蓋 — 拿掉前一天/後一天游標，只留回到週總覽這一個返回鍵)
 // ============================================================================
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -23,7 +23,8 @@ import {
   Checkbox,
   Input,
   Modal,
-  SegmentedControl,
+  Fab,
+  SwipeableRow,
   DateSwitcher,
   EmptyState,
   Spinner,
@@ -54,9 +55,11 @@ function parseDate(dateStr: string | undefined): Date {
   return new Date();
 }
 
+/** 新增流程分三步:先選餐別(早/午/晚),再選分類,最後勾選菜色。
+ *  入口從原本「每餐各自一個 + 按鈕」合併成畫面右下角單一 FAB。 */
 type PickerState = {
-  meal: MealType;
-  step: 'course' | 'dish';
+  step: 'meal' | 'course' | 'dish';
+  meal?: MealType;
   course?: CourseType;
 } | null;
 
@@ -68,7 +71,6 @@ function MenuDayPage() {
   const [menu, setMenu] = useState<MenuDay | null>(null);
   const [allDishes, setAllDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editMode, setEditMode] = useState(false);
   const [picker, setPicker] = useState<PickerState>(null);
   const [selectedDishIds, setSelectedDishIds] = useState<string[]>([]);
   const [newDishName, setNewDishName] = useState('');
@@ -106,16 +108,6 @@ function MenuDayPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateStr]);
 
-  const goPrevDay = () => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() - 1);
-    setCurrentDate(d);
-  };
-  const goNextDay = () => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() + 1);
-    setCurrentDate(d);
-  };
   const goToday = () => setCurrentDate(new Date());
 
   const dishNameOf = (dishId: string): string => {
@@ -123,21 +115,21 @@ function MenuDayPage() {
     return dish ? dish.name : '(已刪除的菜色)';
   };
 
-  const setModeFromSegment = (value: string) => {
-    setEditMode(value === 'edit');
-    setPicker(null);
-    setSelectedDishIds([]);
-  };
-
-  const openPicker = (meal: MealType) => setPicker({ meal, step: 'course' });
+  const openPicker = () => setPicker({ step: 'meal' });
+  const chooseMeal = (meal: MealType) => setPicker({ step: 'course', meal });
   const chooseCourse = (course: CourseType) => {
-    if (!picker) return;
+    if (!picker?.meal) return;
     setSelectedDishIds([]);
-    setPicker({ ...picker, step: 'dish', course });
+    setPicker({ step: 'dish', meal: picker.meal, course });
+  };
+  const backToMeal = () => {
+    setPicker({ step: 'meal' });
+    setSelectedDishIds([]);
+    setNewDishName('');
   };
   const backToCourse = () => {
-    if (!picker) return;
-    setPicker({ meal: picker.meal, step: 'course' });
+    if (!picker?.meal) return;
+    setPicker({ step: 'course', meal: picker.meal });
     setSelectedDishIds([]);
     setNewDishName('');
   };
@@ -154,7 +146,7 @@ function MenuDayPage() {
   };
 
   const handleConfirmAdd = async () => {
-    if (!picker || !picker.course || selectedDishIds.length === 0) return;
+    if (!picker?.meal || !picker.course || selectedDishIds.length === 0) return;
     setSaving(true);
     try {
       for (const dishId of selectedDishIds) {
@@ -206,48 +198,45 @@ function MenuDayPage() {
 
   const dateLabel = `週${WEEKDAY_LABELS[currentDate.getDay()]} ${dateStr}`;
 
+  const pickerTitle = !picker
+    ? undefined
+    : picker.step === 'meal'
+    ? '新增菜色——選擇餐別'
+    : picker.step === 'course'
+    ? `新增到${MEAL_LABELS[picker.meal!]}——選擇分類`
+    : `勾選要加入「${COURSE_LABELS[picker.course!]}」的菜色`;
+
   return (
-    <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96 }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          margin: 'var(--space-3) 0',
-        }}
-      >
+    <div
+      style={{
+        padding: 'var(--space-4)',
+        maxWidth: 480,
+        margin: '0 auto',
+        paddingBottom: 96,
+        position: 'relative',
+        minHeight: '100vh',
+      }}
+    >
+      <div style={{ margin: 'var(--space-3) 0' }}>
         <IconButton icon="‹" label="回到週總覽" onClick={() => navigate('/menu')} />
-        <SegmentedControl
-          options={[
-            { value: 'view', label: '檢視' },
-            { value: 'edit', label: '編輯' },
-          ]}
-          value={editMode ? 'edit' : 'view'}
-          onChange={setModeFromSegment}
-        />
       </div>
 
       <div style={{ marginBottom: 'var(--space-4)' }}>
-        <DateSwitcher label={dateLabel} onPrev={goPrevDay} onNext={goNextDay} isToday={isToday} onToday={goToday} />
+        <DateSwitcher label={dateLabel} isToday={isToday} onToday={goToday} hideArrows />
       </div>
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-5) 0' }}>
           <Spinner />
         </div>
-      ) : dayIsEmpty && !editMode ? (
-        <EmptyState
-          icon="📅"
-          title="這天還沒有安排菜單"
-          action={<Button onClick={() => setModeFromSegment('edit')}>開始安排</Button>}
-        />
+      ) : dayIsEmpty ? (
+        <EmptyState icon="📅" title="這天還沒有安排菜單" description="按右下角的 + 開始安排這天的餐點" />
       ) : (
         (['breakfast', 'lunch', 'dinner'] as const).map((meal) => {
           const mealIsEmpty = COURSE_ORDER.every((course) => (menu?.[meal][course] || []).length === 0);
-          if (mealIsEmpty && !editMode) return null;
 
           return (
-            <Card key={meal} style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+            <Card key={meal} style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)', overflow: 'hidden' }}>
               <div
                 style={{
                   font: 'var(--font-subtitle)',
@@ -258,102 +247,107 @@ function MenuDayPage() {
                 {MEAL_LABELS[meal]}
               </div>
 
-              {COURSE_ORDER.map((course) => {
-                const dishIds = menu?.[meal][course] || [];
-                if (dishIds.length === 0) return null;
-                return (
-                  <div
-                    key={course}
-                    style={{
-                      marginBottom: 'var(--space-2)',
-                      paddingLeft: 'var(--space-2)',
-                      borderLeft: '3px solid var(--color-border)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        font: 'var(--font-caption)',
-                        color: 'var(--color-text-secondary)',
-                        marginBottom: 'var(--space-1)',
-                      }}
-                    >
-                      {COURSE_LABELS[course]}
-                    </div>
-                    <div>
-                      {dishIds.map((dishId) => (
-                        <div
-                          key={dishId}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: 'var(--space-2) 4px',
-                            borderBottom: '1px solid var(--color-surface-sunken)',
-                            font: 'var(--font-body)',
-                          }}
-                        >
-                          {dishNameOf(dishId)}
-                          {editMode && (
-                            <IconButton
-                              icon="×"
-                              label="移除這道菜"
-                              danger
-                              onClick={() => handleRemoveDish(meal, course, dishId)}
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {mealIsEmpty && editMode && (
-                <p
-                  style={{
-                    font: 'var(--font-caption)',
-                    color: 'var(--color-text-placeholder)',
-                    margin: '2px 0 var(--space-3)',
-                  }}
-                >
+              {mealIsEmpty ? (
+                <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)', margin: 0 }}>
                   還沒安排
                 </p>
-              )}
-
-              {editMode && (
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onClick={() => openPicker(meal)}
-                  style={{ marginTop: 'var(--space-2)' }}
-                >
-                  + 新增菜色
-                </Button>
+              ) : (
+                COURSE_ORDER.map((course) => {
+                  const dishIds = menu?.[meal][course] || [];
+                  if (dishIds.length === 0) return null;
+                  return (
+                    <div
+                      key={course}
+                      style={{
+                        marginBottom: 'var(--space-2)',
+                        paddingLeft: 'var(--space-2)',
+                        borderLeft: '3px solid var(--color-border)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          font: 'var(--font-caption)',
+                          color: 'var(--color-text-secondary)',
+                          marginBottom: 'var(--space-1)',
+                        }}
+                      >
+                        {COURSE_LABELS[course]}
+                      </div>
+                      <div>
+                        {dishIds.map((dishId) => (
+                          <SwipeableRow
+                            key={dishId}
+                            actions={[
+                              {
+                                label: '編輯',
+                                icon: '✏️',
+                                onClick: () => navigate(`/edit/${dishId}`),
+                              },
+                              {
+                                label: '刪除',
+                                icon: '🗑',
+                                danger: true,
+                                onClick: () => handleRemoveDish(meal, course, dishId),
+                              },
+                            ]}
+                          >
+                            <div
+                              style={{
+                                padding: 'var(--space-2) 4px',
+                                borderBottom: '1px solid var(--color-surface-sunken)',
+                                font: 'var(--font-body)',
+                              }}
+                            >
+                              {dishNameOf(dishId)}
+                            </div>
+                          </SwipeableRow>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </Card>
           );
         })
       )}
 
-      <Modal
-        open={!!picker}
-        onClose={closePicker}
-        title={
-          picker?.step === 'course'
-            ? `新增到${MEAL_LABELS[picker.meal]}——選擇分類`
-            : picker
-            ? `勾選要加入「${COURSE_LABELS[picker.course!]}」的菜色`
-            : undefined
-        }
-      >
-        {picker?.step === 'course' && (
+      <Modal open={!!picker} onClose={closePicker} title={pickerTitle}>
+        {picker?.step === 'meal' && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-            {COURSE_ORDER.map((course) => (
-              <Button key={course} variant="secondary" size="sm" onClick={() => chooseCourse(course)}>
-                {COURSE_LABELS[course]}
+            {(['breakfast', 'lunch', 'dinner'] as const).map((meal) => (
+              <Button key={meal} variant="secondary" onClick={() => chooseMeal(meal)}>
+                {MEAL_LABELS[meal]}
               </Button>
             ))}
           </div>
+        )}
+
+        {picker?.step === 'course' && (
+          <>
+            <button
+              type="button"
+              onClick={backToMeal}
+              style={{
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                font: 'var(--font-caption)',
+                color: 'var(--color-text-secondary)',
+                padding: 0,
+                marginBottom: 'var(--space-3)',
+              }}
+            >
+              ‹ 換一個餐別
+            </button>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+              {COURSE_ORDER.map((course) => (
+                <Button key={course} variant="secondary" size="sm" onClick={() => chooseCourse(course)}>
+                  {COURSE_LABELS[course]}
+                </Button>
+              ))}
+            </div>
+          </>
         )}
 
         {picker?.step === 'dish' && (
@@ -438,6 +432,8 @@ function MenuDayPage() {
           </>
         )}
       </Modal>
+
+      <Fab label="新增菜色" onClick={openPicker} />
     </div>
   );
 }

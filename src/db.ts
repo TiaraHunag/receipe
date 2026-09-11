@@ -694,6 +694,12 @@ export async function toggleShoppingExtraItem(id: string, checked: boolean): Pro
   await persistToStore();
 }
 
+export async function renameShoppingExtraItem(id: string, name: string): Promise<void> {
+  const database = await getDB();
+  await database.run('UPDATE shopping_extra_items SET name = ? WHERE id = ?;', [name.trim(), id]);
+  await persistToStore();
+}
+
 export async function deleteShoppingExtraItem(id: string): Promise<void> {
   const database = await getDB();
   await database.run('DELETE FROM shopping_extra_items WHERE id = ?;', [id]);

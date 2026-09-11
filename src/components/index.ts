@@ -20,3 +20,4 @@ export * from './Spinner/Spinner';
 export * from './Toast/ToastProvider';
 export * from './SegmentedControl/SegmentedControl';
 export * from './DateSwitcher/DateSwitcher';
+export * from './SwipeableRow/SwipeableRow';

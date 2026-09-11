@@ -1,11 +1,12 @@
 // ============================================================================
-// src/pages/ShoppingListPage.tsx (完整覆蓋 — 冰箱勾選改成寫入真實庫存)
+// src/pages/ShoppingListPage.tsx (完整覆蓋 — 額外項目改右下角 + FAB 新增、左滑「編輯／刪除」)
 // ============================================================================
 import { useEffect, useState } from 'react';
 import {
   getShoppingListForRange,
   getShoppingExtraItems,
   addShoppingExtraItem,
+  renameShoppingExtraItem,
   toggleShoppingExtraItem,
   deleteShoppingExtraItem,
   clearCheckedShoppingExtraItems,
@@ -15,7 +16,7 @@ import {
   ShoppingListItem,
   ShoppingExtraItem,
 } from '../db';
-import { Card, DateSwitcher, Checkbox, Input, Button, IconButton, EmptyState, Spinner, useToast } from '../components';
+import { Card, DateSwitcher, Checkbox, Input, Button, Fab, SwipeableRow, Modal, EmptyState, Spinner, useToast } from '../components';
 import IngredientTag from '../components/IngredientTag';
 
 function formatDate(d: Date): string {
@@ -46,7 +47,8 @@ interface ShoppingItemRowProps {
   muted?: boolean;
 }
 
-/** 單一食材列:名稱(套用分類顏色)、用到這項食材的菜色、冰箱庫存切換 */
+/** 單一食材列:名稱(套用分類顏色)、用到這項食材的菜色、冰箱庫存切換
+ *  這份清單是從菜單規劃自動算出來的,不是使用者手動新增/刪除的項目,維持原本互動方式。 */
 function ShoppingItemRow({ item, onToggleStock, muted }: ShoppingItemRowProps) {
   return (
     <div
@@ -90,6 +92,9 @@ function ShoppingListPage() {
   const [extraItems, setExtraItems] = useState<ShoppingExtraItem[]>([]);
   const [newExtraName, setNewExtraName] = useState('');
   const [addingExtra, setAddingExtra] = useState(false);
+  const [editingItem, setEditingItem] = useState<ShoppingExtraItem | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   const { showToast } = useToast();
 
   const weekEnd = addDays(weekStart, 6);
@@ -165,6 +170,31 @@ function ShoppingListPage() {
     await deleteShoppingExtraItem(id);
   };
 
+  const openEditItem = (item: ShoppingExtraItem) => {
+    setEditingItem(item);
+    setEditValue(item.name);
+  };
+
+  const closeEditItem = () => {
+    setEditingItem(null);
+    setEditValue('');
+  };
+
+  const handleSaveEdit = async () => {
+    const trimmed = editValue.trim();
+    if (!editingItem || !trimmed) return;
+    setSavingEdit(true);
+    try {
+      await renameShoppingExtraItem(editingItem.id, trimmed);
+      await loadExtraItems();
+      closeEditItem();
+    } catch (err) {
+      showToast('更新失敗:' + String(err), 'error');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const handleClearChecked = async () => {
     await clearCheckedShoppingExtraItems();
     await loadExtraItems();
@@ -175,7 +205,16 @@ function ShoppingListPage() {
   const hasCheckedExtra = extraItems.some((it) => it.checked);
 
   return (
-    <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96 }}>
+    <div
+      style={{
+        padding: 'var(--space-4)',
+        maxWidth: 480,
+        margin: '0 auto',
+        paddingBottom: 96,
+        position: 'relative',
+        minHeight: '100vh',
+      }}
+    >
 
       <div style={{ marginBottom: 'var(--space-4)' }}>
         <DateSwitcher
@@ -240,24 +279,14 @@ function ShoppingListPage() {
       <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: 'var(--space-2) 0 var(--space-2)' }}>
         🔖 其他要買的東西
       </h2>
-      <Card style={{ padding: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-          <div style={{ flex: 1 }}>
-            <Input
-              value={newExtraName}
-              onChange={(e) => setNewExtraName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddExtra())}
-              placeholder="例如:衛生紙、醬油"
-            />
-          </div>
-          <Button
-            variant="secondary"
-            onClick={handleAddExtra}
-            loading={addingExtra}
-            disabled={!newExtraName.trim()}
-          >
-            新增
-          </Button>
+      <Card style={{ padding: 'var(--space-4)', overflow: 'hidden' }}>
+        <div style={{ marginBottom: 'var(--space-3)' }}>
+          <Input
+            value={newExtraName}
+            onChange={(e) => setNewExtraName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddExtra())}
+            placeholder="例如:衛生紙、醬油(輸入後按右下角 + 新增)"
+          />
         </div>
 
         {extraItems.length === 0 ? (
@@ -268,23 +297,28 @@ function ShoppingListPage() {
           <>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {extraItems.map((item) => (
-                <div
+                <SwipeableRow
                   key={item.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 'var(--space-2) 0',
-                    borderBottom: '1px solid var(--color-surface-sunken)',
-                  }}
+                  actions={[
+                    { label: '編輯', icon: '✏️', onClick: () => openEditItem(item) },
+                    { label: '刪除', icon: '🗑', danger: true, onClick: () => handleDeleteExtra(item.id) },
+                  ]}
                 >
-                  <Checkbox
-                    label={item.name}
-                    checked={item.checked}
-                    onChange={(e) => handleToggleExtra(item.id, e.target.checked)}
-                  />
-                  <IconButton icon="×" label="刪除" danger onClick={() => handleDeleteExtra(item.id)} />
-                </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: 'var(--space-2) 0',
+                      borderBottom: '1px solid var(--color-surface-sunken)',
+                    }}
+                  >
+                    <Checkbox
+                      label={item.name}
+                      checked={item.checked}
+                      onChange={(e) => handleToggleExtra(item.id, e.target.checked)}
+                    />
+                  </div>
+                </SwipeableRow>
               ))}
             </div>
             {hasCheckedExtra && (
@@ -311,6 +345,31 @@ function ShoppingListPage() {
       >
         食材不記數量,清單僅供勾選提醒;冰箱庫存也可以到「冰箱管理」統一設定。
       </p>
+
+      <Modal open={!!editingItem} onClose={closeEditItem} title="編輯項目">
+        <div style={{ marginBottom: 'var(--space-3)' }}>
+          <Input
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSaveEdit())}
+            placeholder="項目名稱"
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <Button variant="secondary" fullWidth onClick={closeEditItem}>
+            取消
+          </Button>
+          <Button fullWidth onClick={handleSaveEdit} loading={savingEdit} disabled={!editValue.trim()}>
+            儲存
+          </Button>
+        </div>
+      </Modal>
+
+      <Fab
+        label="新增項目"
+        onClick={handleAddExtra}
+        disabled={addingExtra || !newExtraName.trim()}
+      />
     </div>
   );
 }

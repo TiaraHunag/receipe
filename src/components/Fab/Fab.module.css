@@ -31,3 +31,14 @@
 .fab:active {
   transform: scale(0.96);
 }
+
+.fab:disabled {
+  background: var(--color-border-strong);
+  color: var(--color-text-placeholder);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.fab:disabled:hover {
+  background: var(--color-border-strong);
+}
