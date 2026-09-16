@@ -17,7 +17,9 @@ import SharedContent from './plugins/sharedContent';
 
 /** 新增/編輯食譜這兩個表單頁面不顯示底部 Tab Bar,避免填到一半誤觸切換分頁弄丟資料 */
 function shouldHideTabBar(pathname: string): boolean {
-  return pathname === '/new' || pathname.startsWith('/edit/');
+  // /dish/:id (菜色詳情頁) 自己有底部固定的操作列(排進菜單/刪除)，
+  // 跟全域分頁列一起釘在畫面最下面會疊在一起，所以這頁也要隱藏分頁列。
+  return pathname === '/new' || pathname.startsWith('/edit/') || pathname.startsWith('/dish/');
 }
 
 function App() {
