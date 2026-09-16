@@ -1,14 +1,10 @@
-// ============================================================================
-// src/pages/MenuDayPage.tsx (完整覆蓋 — 點餐別空白處＝新增，點菜色項目＝編輯)
-// ============================================================================
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Plus, X, Clock } from 'lucide-react';
 import {
   getMenusInRange,
-  addDishToMeal,
   removeDishFromMeal,
   getAllDishes,
-  insertDish,
   MenuDay,
   MealType,
   CourseType,
@@ -16,27 +12,18 @@ import {
   COURSE_ORDER,
   Dish,
 } from '../db';
-import {
-  Card,
-  Button,
-  IconButton,
-  Checkbox,
-  Input,
-  Modal,
-  Fab,
-  SwipeableRow,
-  DateSwitcher,
-  EmptyState,
-  Spinner,
-} from '../components';
+import { Chip, SegmentedControl, Skeleton, useAddToMenu } from '../components';
+import styles from './MenuDayPage.module.css';
 
+const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner'];
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: '早餐',
   lunch: '午餐',
   dinner: '晚餐',
 };
-
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+const EMPTY_MENU_DAY_COURSES = { staple: [], main: [], side: [], vegetable: [], soup: [], extra: [] };
 
 function formatDate(d: Date): string {
   const y = d.getFullYear();
@@ -55,38 +42,29 @@ function parseDate(dateStr: string | undefined): Date {
   return new Date();
 }
 
-/** 新增流程分三步:先選餐別(早/午/晚),再選分類,最後勾選菜色。
- *  入口從原本「每餐各自一個 + 按鈕」合併成畫面右下角單一 FAB;
- *  點某一餐卡片標題列的「+」會直接帶入該餐別,跳過選餐別那一步。 */
-type PickerState = {
-  step: 'meal' | 'course' | 'dish';
-  meal?: MealType;
-  course?: CourseType;
-} | null;
+/** 沒有從上一頁帶入餐別時,依現在時間猜一個,跟「快速加菜」sheet 用同一套邏輯。 */
+function defaultMealByTime(): MealType {
+  const hour = new Date().getHours();
+  if (hour < 10) return 'breakfast';
+  if (hour < 16) return 'lunch';
+  return 'dinner';
+}
 
 function MenuDayPage() {
   const navigate = useNavigate();
   const { date: dateParam } = useParams<{ date: string }>();
+  const { openAddToMenu } = useAddToMenu();
 
-  const [currentDate, setCurrentDate] = useState<Date>(() => parseDate(dateParam));
+  const [currentDate] = useState<Date>(() => parseDate(dateParam));
+  const [meal, setMeal] = useState<MealType>(() => defaultMealByTime());
   const [menu, setMenu] = useState<MenuDay | null>(null);
   const [allDishes, setAllDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
-  const [picker, setPicker] = useState<PickerState>(null);
-  const [selectedDishIds, setSelectedDishIds] = useState<string[]>([]);
-  const [newDishName, setNewDishName] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const dateStr = formatDate(currentDate);
 
-  const loadDishes = async () => {
-    const dishes = await getAllDishes();
-    setAllDishes(dishes);
-  };
-
   useEffect(() => {
-    loadDishes();
+    getAllDishes().then(setAllDishes);
   }, []);
 
   const fetchDayMenu = async () => {
@@ -95,9 +73,9 @@ function MenuDayPage() {
     setMenu(
       map[dateStr] || {
         date: dateStr,
-        breakfast: { staple: [], main: [], side: [], vegetable: [], soup: [], extra: [] },
-        lunch: { staple: [], main: [], side: [], vegetable: [], soup: [], extra: [] },
-        dinner: { staple: [], main: [], side: [], vegetable: [], soup: [], extra: [] },
+        breakfast: { ...EMPTY_MENU_DAY_COURSES },
+        lunch: { ...EMPTY_MENU_DAY_COURSES },
+        dinner: { ...EMPTY_MENU_DAY_COURSES },
       }
     );
     setLoading(false);
@@ -105,359 +83,111 @@ function MenuDayPage() {
 
   useEffect(() => {
     fetchDayMenu();
-    setPicker(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateStr]);
 
-  const goToday = () => setCurrentDate(new Date());
+  const dishOf = (dishId: string): Dish | undefined => allDishes.find((d) => d.id === dishId);
 
-  const dishNameOf = (dishId: string): string => {
-    const dish = allDishes.find((d) => d.id === dishId);
-    return dish ? dish.name : '(已刪除的菜色)';
-  };
-
-  const openPicker = () => setPicker({ step: 'meal' });
-  const chooseMeal = (meal: MealType) => setPicker({ step: 'course', meal });
-  const chooseCourse = (course: CourseType) => {
-    if (!picker?.meal) return;
-    setSelectedDishIds([]);
-    setPicker({ step: 'dish', meal: picker.meal, course });
-  };
-  const backToMeal = () => {
-    setPicker({ step: 'meal' });
-    setSelectedDishIds([]);
-    setNewDishName('');
-  };
-  const backToCourse = () => {
-    if (!picker?.meal) return;
-    setPicker({ step: 'course', meal: picker.meal });
-    setSelectedDishIds([]);
-    setNewDishName('');
-  };
-  const closePicker = () => {
-    setPicker(null);
-    setSelectedDishIds([]);
-    setNewDishName('');
-  };
-
-  const toggleSelect = (dishId: string) => {
-    setSelectedDishIds((prev) =>
-      prev.includes(dishId) ? prev.filter((id) => id !== dishId) : [...prev, dishId]
-    );
-  };
-
-  const handleConfirmAdd = async () => {
-    if (!picker?.meal || !picker.course || selectedDishIds.length === 0) return;
-    setSaving(true);
-    try {
-      for (const dishId of selectedDishIds) {
-        await addDishToMeal(dateStr, picker.meal, picker.course, dishId);
-      }
-      await fetchDayMenu();
-      closePicker();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRemoveDish = async (meal: MealType, course: CourseType, dishId: string) => {
+  const handleRemoveDish = async (course: CourseType, dishId: string) => {
     await removeDishFromMeal(dateStr, meal, course, dishId);
     fetchDayMenu();
   };
 
-  const handleCreateAndAdd = async () => {
-    const trimmed = newDishName.trim();
-    if (!trimmed) return;
-    setCreating(true);
-    try {
-      const newId = await insertDish({
-        name: trimmed,
-        category: [],
-        ingredients: [],
-        prepAhead: false,
-        source: '',
-        notes: '',
-        hasRecipe: false,
-        recipe: null,
-        courseTypes: picker?.course ? [picker.course] : [],
-        tags: [],
-      });
-      setNewDishName('');
-      await loadDishes();
-      setSelectedDishIds((prev) => [...prev, newId]);
-    } finally {
-      setCreating(false);
-    }
+  const handleAdd = (course: CourseType) => {
+    openAddToMenu({ date: dateStr, meal, course });
   };
 
-  const isToday = dateStr === formatDate(new Date());
-  const dayIsEmpty =
-    !!menu &&
-    (['breakfast', 'lunch', 'dinner'] as const).every((meal) =>
-      COURSE_ORDER.every((course) => (menu[meal][course] || []).length === 0)
-    );
+  const countForMeal = (m: MealType): number => {
+    if (!menu) return 0;
+    return COURSE_ORDER.reduce((sum, course) => sum + (menu[m][course]?.length || 0), 0);
+  };
 
-  const dateLabel = `週${WEEKDAY_LABELS[currentDate.getDay()]} ${dateStr}`;
-
-  const pickerTitle = !picker
-    ? undefined
-    : picker.step === 'meal'
-    ? '新增菜色——選擇餐別'
-    : picker.step === 'course'
-    ? `新增到${MEAL_LABELS[picker.meal!]}——選擇分類`
-    : `勾選要加入「${COURSE_LABELS[picker.course!]}」的菜色`;
+  const dateLabel = `${currentDate.getMonth() + 1}/${currentDate.getDate()}（週${WEEKDAY_LABELS[currentDate.getDay()]}）`;
 
   return (
-    <div
-      style={{
-        padding: 'var(--space-4)',
-        maxWidth: 480,
-        margin: '0 auto',
-        paddingBottom: 96,
-        position: 'relative',
-        minHeight: '100vh',
-      }}
-    >
-      <div style={{ margin: 'var(--space-3) 0' }}>
-        <IconButton icon="‹" label="回到週總覽" onClick={() => navigate('/menu')} />
+    <div className={styles.page}>
+      <div className={styles.header}>
+        <button type="button" className={styles.backBtn} onClick={() => navigate('/menu')} aria-label="回到週總覽">
+          <ArrowLeft size={19} strokeWidth={2.5} />
+        </button>
+        <h1 className={styles.pageTitle}>{dateLabel}</h1>
       </div>
 
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <DateSwitcher label={dateLabel} isToday={isToday} onToday={goToday} hideArrows />
-      </div>
+      <SegmentedControl
+        className={styles.mealSwitch}
+        options={MEAL_ORDER.map((m) => ({
+          value: m,
+          label: loading ? MEAL_LABELS[m] : `${MEAL_LABELS[m]} ${countForMeal(m)}`,
+        }))}
+        value={meal}
+        onChange={(v) => setMeal(v as MealType)}
+      />
 
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-5) 0' }}>
-          <Spinner />
-        </div>
-      ) : dayIsEmpty ? (
-        <EmptyState icon="📅" title="這天還沒有安排菜單" description="按右下角的 + 開始安排這天的餐點" />
+        <>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className={styles.section}>
+              <Skeleton width={56} height={13} />
+              <div style={{ marginTop: 8 }}>
+                <Skeleton height={44} radius="var(--radius-row)" />
+              </div>
+            </div>
+          ))}
+        </>
       ) : (
-        (['breakfast', 'lunch', 'dinner'] as const).map((meal) => {
-          const mealIsEmpty = COURSE_ORDER.every((course) => (menu?.[meal][course] || []).length === 0);
-
+        COURSE_ORDER.map((course) => {
+          const dishIds = menu?.[meal][course] || [];
           return (
-            <Card
-              key={meal}
-              style={{
-                padding: 'var(--space-4)',
-                marginBottom: 'var(--space-4)',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 'var(--space-3)',
-                }}
-              >
-                <div
-                  style={{
-                    font: 'var(--font-subtitle)',
-                    color: 'var(--color-text)',
-                  }}
+            <div key={course} className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <span className={styles.sectionLabel}>{COURSE_LABELS[course]}</span>
+                <span className={styles.sectionLine} />
+                <button
+                  type="button"
+                  className={styles.addBtn}
+                  onClick={() => handleAdd(course)}
+                  aria-label={`新增到${COURSE_LABELS[course]}`}
                 >
-                  {MEAL_LABELS[meal]}
-                </div>
-                <IconButton
-                  icon="+"
-                  label={`新增到${MEAL_LABELS[meal]}`}
-                  onClick={() => chooseMeal(meal)}
-                />
+                  <Plus size={16} strokeWidth={2.75} />
+                </button>
               </div>
 
-              {mealIsEmpty ? (
-                <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)', margin: 0 }}>
-                  還沒安排
-                </p>
+              {dishIds.length === 0 ? (
+                <div className={styles.emptyRow}>—</div>
               ) : (
-                COURSE_ORDER.map((course) => {
-                  const dishIds = menu?.[meal][course] || [];
-                  if (dishIds.length === 0) return null;
+                dishIds.map((dishId) => {
+                  const dish = dishOf(dishId);
                   return (
-                    <div
-                      key={course}
-                      style={{
-                        marginBottom: 'var(--space-2)',
-                        paddingLeft: 'var(--space-2)',
-                        borderLeft: '3px solid var(--color-border)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          font: 'var(--font-caption)',
-                          color: 'var(--color-text-secondary)',
-                          marginBottom: 'var(--space-1)',
-                        }}
+                    <div key={dishId} className={styles.dishRow}>
+                      <div className={styles.dishInfo}>
+                        <div className={styles.dishNameLine}>
+                          <span className={styles.dishName}>{dish ? dish.name : '(已刪除的菜色)'}</span>
+                          {dish?.prepAhead && (
+                            <Chip tone="prepAhead" variant="badge" icon={<Clock size={10} strokeWidth={3} />}>
+                              可先做
+                            </Chip>
+                          )}
+                        </div>
+                        {dish && dish.ingredients.length > 0 && (
+                          <div className={styles.ingredientLine}>{dish.ingredients.join('、')}</div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.removeBtn}
+                        onClick={() => handleRemoveDish(course, dishId)}
+                        aria-label={`從${COURSE_LABELS[course]}移除${dish ? dish.name : ''}`}
                       >
-                        {COURSE_LABELS[course]}
-                      </div>
-                      <div>
-                        {dishIds.map((dishId) => (
-                          <SwipeableRow
-                            key={dishId}
-                            actions={[
-                              {
-                                label: '編輯',
-                                onClick: () => navigate(`/edit/${dishId}`),
-                              },
-                              {
-                                label: '刪除',
-                                danger: true,
-                                onClick: () => handleRemoveDish(meal, course, dishId),
-                              },
-                            ]}
-                          >
-                            <div
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/edit/${dishId}`);
-                              }}
-                              style={{
-                                padding: 'var(--space-2) 4px',
-                                borderBottom: '1px solid var(--color-surface-sunken)',
-                                font: 'var(--font-body)',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {dishNameOf(dishId)}
-                            </div>
-                          </SwipeableRow>
-                        ))}
-                      </div>
+                        <X size={18} strokeWidth={2.5} />
+                      </button>
                     </div>
                   );
                 })
               )}
-            </Card>
+            </div>
           );
         })
       )}
-
-      <Modal open={!!picker} onClose={closePicker} title={pickerTitle}>
-        {picker?.step === 'meal' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-            {(['breakfast', 'lunch', 'dinner'] as const).map((meal) => (
-              <Button key={meal} variant="secondary" onClick={() => chooseMeal(meal)}>
-                {MEAL_LABELS[meal]}
-              </Button>
-            ))}
-          </div>
-        )}
-
-        {picker?.step === 'course' && (
-          <>
-            <button
-              type="button"
-              onClick={backToMeal}
-              style={{
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                font: 'var(--font-caption)',
-                color: 'var(--color-text-secondary)',
-                padding: 0,
-                marginBottom: 'var(--space-3)',
-              }}
-            >
-              ‹ 換一個餐別
-            </button>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-              {COURSE_ORDER.map((course) => (
-                <Button key={course} variant="secondary" size="sm" onClick={() => chooseCourse(course)}>
-                  {COURSE_LABELS[course]}
-                </Button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {picker?.step === 'dish' && (
-          <>
-            <button
-              type="button"
-              onClick={backToCourse}
-              style={{
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                font: 'var(--font-caption)',
-                color: 'var(--color-text-secondary)',
-                padding: 0,
-                marginBottom: 'var(--space-3)',
-              }}
-            >
-              ‹ 換一個分類
-            </button>
-
-            <div style={{ maxHeight: 240, overflowY: 'auto', marginBottom: 'var(--space-3)' }}>
-              {allDishes.length === 0 ? (
-                <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)' }}>
-                  還沒有菜色可選
-                </p>
-              ) : (
-                allDishes.map((dish) => (
-                  <div key={dish.id} style={{ padding: 'var(--space-1) 0' }}>
-                    <Checkbox
-                      label={dish.name}
-                      checked={selectedDishIds.includes(dish.id)}
-                      onChange={() => toggleSelect(dish.id)}
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div
-              style={{
-                borderTop: '1px solid var(--color-border)',
-                paddingTop: 'var(--space-3)',
-                marginBottom: 'var(--space-3)',
-              }}
-            >
-              <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', margin: '0 0 var(--space-2)' }}>
-                找不到想要的菜?直接新增:
-              </p>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                <div style={{ flex: 1 }}>
-                  <Input
-                    value={newDishName}
-                    onChange={(e) => setNewDishName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCreateAndAdd())}
-                    placeholder="輸入新菜名"
-                  />
-                </div>
-                <Button
-                  variant="secondary"
-                  onClick={handleCreateAndAdd}
-                  loading={creating}
-                  disabled={!newDishName.trim()}
-                >
-                  建立並勾選
-                </Button>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <Button variant="secondary" fullWidth onClick={closePicker}>
-                取消
-              </Button>
-              <Button
-                fullWidth
-                onClick={handleConfirmAdd}
-                loading={saving}
-                disabled={selectedDishIds.length === 0}
-              >
-                確認新增{selectedDishIds.length > 0 ? `(${selectedDishIds.length})` : ''}
-              </Button>
-            </div>
-          </>
-        )}
-      </Modal>
-
-      <Fab label="新增菜色" onClick={openPicker} />
     </div>
   );
 }
