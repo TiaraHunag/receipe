@@ -62,3 +62,35 @@
     font: var(--font-body);
     color: var(--color-text);
   }
+
+  /* ---- 圓形勾選圈變體(README 採買清單/常備品用) ---- */
+  .circle {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border-width: 2px;
+    border-color: var(--circle);
+  }
+
+  .circle::after {
+    left: 7px;
+    top: 3px;
+    width: 6px;
+    height: 12px;
+  }
+
+  /* 圓形通常會搭配 hideLabel，單獨一個 24px 圓點擊區太小，
+     用內距把可點擊範圍撐大一些(視覺位置用負邊界拉回去，不影響外部排版)。 */
+  .hitArea {
+    padding: 10px 4px;
+    margin: -10px -4px;
+  }
+
+  .srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    clip: rect(0, 0, 0, 0);
+  }

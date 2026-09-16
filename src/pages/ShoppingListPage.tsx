@@ -1,7 +1,6 @@
-// ============================================================================
-// src/pages/ShoppingListPage.tsx (完整覆蓋 — 額外項目改右下角 + FAB 新增、左滑「編輯／刪除」)
-// ============================================================================
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Refrigerator, Pencil, Trash2, Plus } from 'lucide-react';
 import {
   getShoppingListForRange,
   getShoppingExtraItems,
@@ -13,11 +12,14 @@ import {
   addFridgeItem,
   removeFridgeItem,
   getWeekStartDay,
+  getAllIngredientCategories,
   ShoppingListItem,
   ShoppingExtraItem,
+  IngredientCategory,
 } from '../db';
-import { Card, DateSwitcher, Checkbox, Input, Button, Fab, SwipeableRow, Modal, EmptyState, Skeleton, useToast } from '../components';
-import IngredientTag from '../components/IngredientTag';
+import { Checkbox, EmptyState, Skeleton, useToast } from '../components';
+import { getColor } from '../components';
+import styles from './ShoppingListPage.module.css';
 
 function formatDate(d: Date): string {
   const y = d.getFullYear();
@@ -41,109 +43,57 @@ function addDays(d: Date, days: number): Date {
   return copy;
 }
 
-interface ShoppingItemRowProps {
-  item: ShoppingListItem;
-  onToggleStock: (name: string, inStock: boolean) => void;
-  muted?: boolean;
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+/** 分類還沒換成 README 的六色盤之前,借用舊版 9 色標籤盤的深字色當實心圓點顏色。 */
+function categoryDotColor(colorKey: string | null | undefined): string {
+  return getColor(colorKey).text;
 }
 
-/** 單一食材列:名稱(套用分類顏色)、用到這項食材的菜色、冰箱庫存切換
- *  這份清單是從菜單規劃自動算出來的,不是使用者手動新增/刪除的項目,維持原本互動方式。 */
-function ShoppingItemRow({ item, onToggleStock, muted }: ShoppingItemRowProps) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 'var(--space-3)',
-        padding: 'var(--space-2) 0',
-        borderBottom: '1px solid var(--color-surface-sunken)',
-      }}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, opacity: muted ? 0.6 : 1 }}>
-        <IngredientTag name={item.name} colorKey={item.color} />
-        <span
-          style={{
-            font: 'var(--font-caption)',
-            color: 'var(--color-text-secondary)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          用於:{item.dishNames.join('、')}
-        </span>
-      </div>
-      <Checkbox
-        label="冰箱有"
-        checked={item.inStock}
-        onChange={(e) => onToggleStock(item.name, e.target.checked)}
-      />
-    </div>
-  );
+interface ItemGroup {
+  key: string;
+  label: string;
+  color: string | null;
+  items: ShoppingListItem[];
 }
 
-/** 需採買清單單一列骨架:貼近 ShoppingItemRow(食材標籤 + 用途文字 + 冰箱有勾選) */
-function ShoppingRowSkeleton() {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 'var(--space-3)',
-        padding: 'var(--space-2) 0',
-        borderBottom: '1px solid var(--color-surface-sunken)',
-      }}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 }}>
-        <Skeleton width={72} height={22} radius="var(--radius-pill)" />
-        <Skeleton width={120} height={11} />
-      </div>
-      <Skeleton width={44} height={24} />
-    </div>
-  );
-}
-
-/** 首次載入骨架屏:貼近「需採買」+「冰箱已有」兩張卡片的外型,取代原本的轉圈圈 */
+/** 首次載入骨架屏:貼近「進度條 + 幾個分類段落」的外型 */
 function ShoppingListSkeleton() {
   return (
-    <>
-      <Card style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-        <Skeleton width={90} height={15} style={{ marginBottom: 'var(--space-3)' }} />
-        {[0, 1, 2, 3].map((i) => (
-          <ShoppingRowSkeleton key={i} />
+    <div className={styles.body}>
+      <div style={{ marginBottom: 18 }}>
+        <Skeleton width={64} height={13} />
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid var(--line)' }}>
+            <Skeleton width="50%" height={16} />
+            <div style={{ marginTop: 6 }}>
+              <Skeleton width="30%" height={11} />
+            </div>
+          </div>
         ))}
-      </Card>
-      <Card style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-        <Skeleton width={140} height={13} style={{ marginBottom: 'var(--space-3)' }} />
-        {[0, 1].map((i) => (
-          <ShoppingRowSkeleton key={i} />
-        ))}
-      </Card>
-    </>
+      </div>
+    </div>
   );
 }
 
 function ShoppingListPage() {
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+
   const [weekStartDayNum, setWeekStartDayNum] = useState(0);
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), 0));
   const [items, setItems] = useState<ShoppingListItem[]>([]);
+  const [categories, setCategories] = useState<IngredientCategory[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+
   const [extraItems, setExtraItems] = useState<ShoppingExtraItem[]>([]);
   const [newExtraName, setNewExtraName] = useState('');
   const [addingExtra, setAddingExtra] = useState(false);
-  const [editingItem, setEditingItem] = useState<ShoppingExtraItem | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
-  const { showToast } = useToast();
 
   const weekEnd = addDays(weekStart, 6);
-  const todayStr = formatDate(new Date());
-  const isCurrentWeek = Array.from({ length: 7 }, (_, i) => formatDate(addDays(weekStart, i))).includes(
-    todayStr
-  );
 
   const loadExtraItems = async () => {
     const list = await getShoppingExtraItems();
@@ -155,6 +105,7 @@ function ShoppingListPage() {
       setWeekStartDayNum(day);
       setWeekStart(startOfWeek(new Date(), day));
     });
+    getAllIngredientCategories().then(setCategories);
     loadExtraItems();
   }, []);
 
@@ -165,22 +116,40 @@ function ShoppingListPage() {
       .finally(() => setLoadingList(false));
   }, [weekStart]);
 
-  const goPrevWeek = () => setWeekStart((d) => addDays(d, -7));
-  const goNextWeek = () => setWeekStart((d) => addDays(d, 7));
-  const goThisWeek = () => setWeekStart(startOfWeek(new Date(), weekStartDayNum));
+  const weekLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()} – ${weekEnd.getMonth() + 1}/${weekEnd.getDate()}（週${
+    WEEKDAY_LABELS[weekStartDayNum]
+  }起）`;
 
-  const weekLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()} – ${
-    weekEnd.getMonth() + 1
-  }/${weekEnd.getDate()}`;
+  const inStockCount = items.filter((it) => it.inStock).length;
+  const progressPct = items.length === 0 ? 0 : Math.round((inStockCount / items.length) * 100);
+
+  // 依 ingredient_categories 的既有順序分段,items 本身已經照
+  // getShoppingListForRange 的規則排好序(inStock 排後、其餘 localeCompare),
+  // 用 filter 分組不會打亂那個順序。
+  const groups: ItemGroup[] = useMemo(() => {
+    const known = categories
+      .map((cat) => ({
+        key: cat.id,
+        label: cat.name,
+        color: cat.color,
+        items: items.filter((it) => it.categoryId === cat.id),
+      }))
+      .filter((g) => g.items.length > 0);
+    const uncategorized = items.filter((it) => !it.categoryId);
+    return uncategorized.length > 0
+      ? [...known, { key: '__none__', label: '未分類', color: null, items: uncategorized }]
+      : known;
+  }, [items, categories]);
 
   const handleToggleStock = async (name: string, inStock: boolean) => {
-    // 先更新畫面(讓項目立刻在「需採買/冰箱已有」兩區之間移動),再寫回真正的冰箱庫存表
     setItems((prev) => prev.map((it) => (it.name === name ? { ...it, inStock } : it)));
     try {
       if (inStock) {
         await addFridgeItem(name);
+        showToast(`${name} 已記進冰箱`, 'success');
       } else {
         await removeFridgeItem(name);
+        showToast(`${name} 已從冰箱移除`, 'success');
       }
     } catch (err) {
       showToast('更新冰箱狀態失敗:' + String(err), 'error');
@@ -189,10 +158,14 @@ function ShoppingListPage() {
 
   const handleAddExtra = async () => {
     const trimmed = newExtraName.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      showToast('先打上要買的東西', 'error');
+      return;
+    }
     setAddingExtra(true);
     try {
       await addShoppingExtraItem(trimmed);
+      showToast(`${trimmed} 已加入清單`, 'success');
       setNewExtraName('');
       await loadExtraItems();
     } catch (err) {
@@ -207,29 +180,30 @@ function ShoppingListPage() {
     await toggleShoppingExtraItem(id, checked);
   };
 
-  const handleDeleteExtra = async (id: string) => {
+  const handleDeleteExtra = async (id: string, name: string) => {
     setExtraItems((prev) => prev.filter((it) => it.id !== id));
     await deleteShoppingExtraItem(id);
+    showToast(`${name} 已刪除`, 'success');
   };
 
   const openEditItem = (item: ShoppingExtraItem) => {
-    setEditingItem(item);
+    setEditingId(item.id);
     setEditValue(item.name);
   };
 
-  const closeEditItem = () => {
-    setEditingItem(null);
+  const cancelEditItem = () => {
+    setEditingId(null);
     setEditValue('');
   };
 
   const handleSaveEdit = async () => {
     const trimmed = editValue.trim();
-    if (!editingItem || !trimmed) return;
+    if (!editingId || !trimmed) return;
     setSavingEdit(true);
     try {
-      await renameShoppingExtraItem(editingItem.id, trimmed);
+      await renameShoppingExtraItem(editingId, trimmed);
       await loadExtraItems();
-      closeEditItem();
+      cancelEditItem();
     } catch (err) {
       showToast('更新失敗:' + String(err), 'error');
     } finally {
@@ -242,174 +216,170 @@ function ShoppingListPage() {
     await loadExtraItems();
   };
 
-  const needToBuy = items.filter((it) => !it.inStock);
-  const haveStock = items.filter((it) => it.inStock);
   const hasCheckedExtra = extraItems.some((it) => it.checked);
+  const noMenuThisWeek = !loadingList && items.length === 0;
 
   return (
-    <div
-      style={{
-        padding: 'var(--space-4)',
-        maxWidth: 480,
-        margin: '0 auto',
-        paddingBottom: 96,
-        position: 'relative',
-        minHeight: '100vh',
-      }}
-    >
-
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <DateSwitcher
-          label={weekLabel}
-          onPrev={goPrevWeek}
-          onNext={goNextWeek}
-          isToday={isCurrentWeek}
-          onToday={goThisWeek}
-        />
-      </div>
-
-      <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: '0 0 var(--space-2)' }}>
-        🛒 本週菜單需要的食材
-      </h2>
-
-      {loadingList ? (
-        <ShoppingListSkeleton />
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon="📅"
-          title="這週還沒安排菜單"
-          description="先到「菜單規劃」排這週的餐點,這裡就會自動列出需要採買的食材。"
-        />
-      ) : (
-        <>
-          <Card style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-            <p style={{ font: 'var(--font-label)', color: 'var(--color-text)', margin: '0 0 var(--space-2)' }}>
-              需採買({needToBuy.length})
-            </p>
-            {needToBuy.length === 0 ? (
-              <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)' }}>
-                這週用到的食材冰箱都有,不用買
-              </p>
-            ) : (
-              needToBuy.map((item) => (
-                <ShoppingItemRow key={item.name} item={item} onToggleStock={handleToggleStock} />
-              ))
-            )}
-          </Card>
-
-          {haveStock.length > 0 && (
-            <Card style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-              <p
-                style={{
-                  font: 'var(--font-label)',
-                  color: 'var(--color-text-secondary)',
-                  margin: '0 0 var(--space-2)',
-                }}
-              >
-                ✅ 冰箱已有,可略過({haveStock.length})
-              </p>
-              {haveStock.map((item) => (
-                <ShoppingItemRow key={item.name} item={item} onToggleStock={handleToggleStock} muted />
-              ))}
-            </Card>
-          )}
-        </>
-      )}
-
-      <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: 'var(--space-2) 0 var(--space-2)' }}>
-        🔖 其他要買的東西
-      </h2>
-      <Card style={{ padding: 'var(--space-4)', overflow: 'hidden' }}>
-        <div style={{ marginBottom: 'var(--space-3)' }}>
-          <Input
-            value={newExtraName}
-            onChange={(e) => setNewExtraName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddExtra())}
-            placeholder="例如:衛生紙、醬油(輸入後按右下角 + 新增)"
-          />
+    <div className={styles.page}>
+      <div className={styles.stickyTop}>
+        <div className={styles.titleRow}>
+          <div>
+            <h1 className={styles.pageTitle}>採買</h1>
+            <div className={styles.weekRange}>{weekLabel}</div>
+          </div>
+          <Link to="/ingredients" className={styles.fridgeBtn}>
+            <Refrigerator size={16} strokeWidth={2.5} />
+            冰箱
+          </Link>
         </div>
 
-        {extraItems.length === 0 ? (
-          <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)' }}>
-            還沒有額外項目
-          </p>
-        ) : (
+        {!loadingList && items.length > 0 && (
           <>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {extraItems.map((item) => (
-                <SwipeableRow
-                key={item.id}
-                actions={[
-                  { label: '編輯', onClick: () => openEditItem(item) },
-                  { label: '刪除', danger: true, onClick: () => handleDeleteExtra(item.id) },
-                ]}
-              >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      padding: 'var(--space-2) 0',
-                      borderBottom: '1px solid var(--color-surface-sunken)',
-                    }}
-                  >
-                    <Checkbox
-                      label={item.name}
-                      checked={item.checked}
-                      onChange={(e) => handleToggleExtra(item.id, e.target.checked)}
-                    />
-                  </div>
-                </SwipeableRow>
-              ))}
+            <div className={styles.progressRow}>
+              <div className={styles.progressTrack}>
+                <div className={styles.progressFill} style={{ width: `${progressPct}%` }} />
+              </div>
+              <span className={styles.progressCount}>
+                {inStockCount} / {items.length}
+              </span>
             </div>
-            {hasCheckedExtra && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearChecked}
-                style={{ marginTop: 'var(--space-2)' }}
-              >
-                清除已買的項目
-              </Button>
-            )}
+            <p className={styles.hintLine}>勾選＝記進冰箱庫存,會排到分類最後面。</p>
           </>
         )}
-      </Card>
+      </div>
 
-      <p
-        style={{
-          font: 'var(--font-caption)',
-          color: 'var(--color-text-placeholder)',
-          textAlign: 'center',
-          marginTop: 'var(--space-4)',
-        }}
-      >
-        食材不記數量,清單僅供勾選提醒;冰箱庫存也可以到「冰箱管理」統一設定。
-      </p>
-
-      <Modal open={!!editingItem} onClose={closeEditItem} title="編輯項目">
-        <div style={{ marginBottom: 'var(--space-3)' }}>
-          <Input
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSaveEdit())}
-            placeholder="項目名稱"
+      <div className={styles.body}>
+        {loadingList ? (
+          <ShoppingListSkeleton />
+        ) : noMenuThisWeek ? (
+          <EmptyState
+            title="這週還沒排菜單"
+            description="排好菜單後,食材會自動彙整到這裡。"
+            action={
+              <button type="button" className={styles.primaryBtn} onClick={() => navigate('/menu')}>
+                去排菜單
+              </button>
+            }
           />
-        </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <Button variant="secondary" fullWidth onClick={closeEditItem}>
-            取消
-          </Button>
-          <Button fullWidth onClick={handleSaveEdit} loading={savingEdit} disabled={!editValue.trim()}>
-            儲存
-          </Button>
-        </div>
-      </Modal>
+        ) : (
+          groups.map((group) => (
+            <div key={group.key} className={styles.section}>
+              <div className={styles.sectionHeader}>
+                {group.color && (
+                  <span className={styles.categoryDot} style={{ background: categoryDotColor(group.color) }} />
+                )}
+                <span className={styles.sectionLabel}>{group.label}</span>
+                <span className={styles.sectionLine} />
+              </div>
+              {group.items.map((item) => (
+                <div key={item.name} className={styles.itemRow}>
+                  <Checkbox
+                    shape="circle"
+                    hideLabel
+                    label={item.name}
+                    checked={item.inStock}
+                    onChange={(e) => handleToggleStock(item.name, e.target.checked)}
+                  />
+                  <div className={styles.itemInfo}>
+                    <div className={[styles.itemName, item.inStock ? styles.itemNameChecked : ''].join(' ')}>
+                      {item.name}
+                    </div>
+                    {item.dishNames.length > 0 && (
+                      <div className={styles.itemDishes}>{item.dishNames.join('、')}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
 
-      <Fab
-        label="新增項目"
-        onClick={handleAddExtra}
-        disabled={addingExtra || !newExtraName.trim()}
-      />
+        <div className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <span className={styles.sectionLabel}>其他要買的</span>
+            <span className={styles.sectionLine} />
+            {hasCheckedExtra && (
+              <button type="button" className={styles.clearCheckedBtn} onClick={handleClearChecked}>
+                清除已勾選
+              </button>
+            )}
+          </div>
+
+          {extraItems.length === 0 ? (
+            <div className={styles.emptyExtra}>還沒有額外項目</div>
+          ) : (
+            extraItems.map((item) =>
+              editingId === item.id ? (
+                <div key={item.id} className={styles.editRow}>
+                  <input
+                    className={styles.editInput}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSaveEdit())}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className={styles.editDoneBtn}
+                    onClick={handleSaveEdit}
+                    disabled={savingEdit || !editValue.trim()}
+                  >
+                    完成
+                  </button>
+                </div>
+              ) : (
+                <div key={item.id} className={styles.extraRow}>
+                  <Checkbox
+                    shape="circle"
+                    hideLabel
+                    label={item.name}
+                    checked={item.checked}
+                    onChange={(e) => handleToggleExtra(item.id, e.target.checked)}
+                  />
+                  <span className={[styles.extraName, item.checked ? styles.extraNameChecked : ''].join(' ')}>
+                    {item.name}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    onClick={() => openEditItem(item)}
+                    aria-label={`改名${item.name}`}
+                  >
+                    <Pencil size={17} strokeWidth={2.25} />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    onClick={() => handleDeleteExtra(item.id, item.name)}
+                    aria-label={`刪除${item.name}`}
+                  >
+                    <Trash2 size={17} strokeWidth={2.25} />
+                  </button>
+                </div>
+              )
+            )
+          )}
+        </div>
+      </div>
+
+      <div className={styles.footer}>
+        <input
+          className={styles.footerInput}
+          value={newExtraName}
+          onChange={(e) => setNewExtraName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddExtra())}
+          placeholder="加一項:衛生紙、醬油…"
+        />
+        <button
+          type="button"
+          className={styles.footerAddBtn}
+          onClick={handleAddExtra}
+          disabled={addingExtra}
+          aria-label="新增項目"
+        >
+          <Plus size={20} strokeWidth={2.75} />
+        </button>
+      </div>
     </div>
   );
 }
