@@ -18,7 +18,7 @@ import {
   IngredientCategory,
 } from '../db';
 import { Checkbox, EmptyState, Skeleton, useToast } from '../components';
-import { getColor } from '../components';
+import { resolveIngredientCategoryColor } from '../ingredientCategoryColors';
 import styles from './ShoppingListPage.module.css';
 
 function formatDate(d: Date): string {
@@ -44,11 +44,6 @@ function addDays(d: Date, days: number): Date {
 }
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
-
-/** 分類還沒換成 README 的六色盤之前,借用舊版 9 色標籤盤的深字色當實心圓點顏色。 */
-function categoryDotColor(colorKey: string | null | undefined): string {
-  return getColor(colorKey).text;
-}
 
 interface ItemGroup {
   key: string;
@@ -266,7 +261,7 @@ function ShoppingListPage() {
             <div key={group.key} className={styles.section}>
               <div className={styles.sectionHeader}>
                 {group.color && (
-                  <span className={styles.categoryDot} style={{ background: categoryDotColor(group.color) }} />
+                  <span className={styles.categoryDot} style={{ background: resolveIngredientCategoryColor(group.color) }} />
                 )}
                 <span className={styles.sectionLabel}>{group.label}</span>
                 <span className={styles.sectionLine} />

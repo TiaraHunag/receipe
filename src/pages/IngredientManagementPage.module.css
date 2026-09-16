@@ -1,0 +1,206 @@
+.page {
+  padding: var(--page-padding-top) var(--page-padding-x) calc(40px + env(safe-area-inset-bottom, 0px));
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.backBtn {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.pageTitle {
+  margin: 0;
+  font: var(--font-page-title);
+  color: var(--text);
+}
+
+.tabSwitch {
+  width: 100%;
+  display: flex;
+  margin-bottom: 18px;
+}
+
+.addRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  align-items: flex-start;
+}
+
+.addRow > :first-child {
+  flex: 1;
+}
+
+.roundAddBtn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--primary);
+  color: var(--on-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.roundAddBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.section {
+  margin-bottom: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.categoryDot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.sectionLabel {
+  font: var(--font-section-label);
+  letter-spacing: var(--section-label-spacing);
+  text-transform: uppercase;
+  color: var(--text-4);
+  white-space: nowrap;
+}
+
+.sectionLine {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.itemRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--line);
+}
+
+.itemDotBig {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  font: 400 15px/1.3 var(--font-family);
+  color: var(--text);
+}
+
+.iconBtn {
+  flex: none;
+  width: 40px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--text-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* ---- 食材分類 tab ---- */
+.categoryRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--line);
+}
+
+.categoryName {
+  flex: 1;
+  min-width: 0;
+  font: 400 15px/1.3 var(--font-family);
+  color: var(--text);
+}
+
+.categoryCount {
+  flex: none;
+  font: 400 11.5px/1 var(--font-family);
+  color: var(--text-4);
+}
+
+.newCategoryCard {
+  margin-top: 14px;
+  background: var(--surface-2);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.newCategoryRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.newCategoryInput {
+  flex: 1;
+  min-width: 140px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border-input);
+  background: var(--surface);
+  font: var(--font-form-input);
+  color: var(--text);
+}
+
+.createCategoryBtn {
+  flex: none;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--primary);
+  color: var(--on-primary);
+  font: var(--font-button-sm);
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.createCategoryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

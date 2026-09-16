@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Pencil, Link2, Trash2, Clock } from 'lucide-react';
 import { getDishById, deleteDish, getFridgeItems, getIngredientCategoryMap, Dish, IngredientWithCategory, COURSE_LABELS } from '../db';
-import { getColor } from '../components';
+import { resolveIngredientCategoryColor } from '../ingredientCategoryColors';
 import { ConfirmDialog, Spinner, useToast, useAddToMenu } from '../components';
 import styles from './DishDetailPage.module.css';
 
@@ -10,12 +10,6 @@ function linkify(text: string): (string | JSX.Element)[] {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   return parts.map((part, i) => (urlRegex.test(part) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer">{part}</a> : part));
-}
-
-/** 舊版 9 色標籤盤還沒有「單一飽和色圓點」這種語意，先借用該色的深字色當圓點顏色，
- *  等「冰箱與食材」畫面換成 README 的六色盤後這裡可以直接改用那個 hex 值。 */
-function categoryDotColor(colorKey: string | null | undefined): string {
-  return getColor(colorKey).text;
 }
 
 function DishDetailPage() {
@@ -163,7 +157,7 @@ function DishDetailPage() {
                   <div key={ing} className={styles.ingredientRow}>
                     <span
                       className={styles.categoryDot}
-                      style={{ background: categoryDotColor(info?.color) }}
+                      style={{ background: resolveIngredientCategoryColor(info?.color) }}
                     />
                     <div className={styles.ingredientInfo}>
                       <div className={styles.ingredientName}>{ing}</div>

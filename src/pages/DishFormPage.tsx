@@ -18,8 +18,8 @@ import {
   COURSE_LABELS,
   COURSE_ORDER,
 } from '../db';
+import { INGREDIENT_CATEGORY_COLORS } from '../ingredientCategoryColors';
 import {
-  TAG_COLOR_OPTIONS,
   Input,
   Textarea,
   Button,
@@ -85,7 +85,7 @@ function DishFormPage() {
   const [ingredientCategoryMap, setIngredientCategoryMap] = useState<Record<string, IngredientWithCategory>>({});
   const [pendingIngredient, setPendingIngredient] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryColor, setNewCategoryColor] = useState(TAG_COLOR_OPTIONS[0].key);
+  const [newCategoryColor, setNewCategoryColor] = useState(INGREDIENT_CATEGORY_COLORS[0].key);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
 
   // ---- 離開保護:表單有未儲存變更時,攔截返回動作 ----
@@ -534,7 +534,7 @@ function DishFormPage() {
                     className={styles.newCatInput}
                     style={{ minHeight: 38 }}
                   />
-                  {TAG_COLOR_OPTIONS.map((c) => (
+                  {INGREDIENT_CATEGORY_COLORS.map((c) => (
                     <ColorDot
                       key={c.key}
                       color={c}

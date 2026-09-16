@@ -1,38 +1,62 @@
-// ============================================================================
-// src/pages/IngredientManagementPage.tsx (完整覆蓋 — 只保留冰箱庫存)
-// ============================================================================
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import {
   getIngredientCategoryMap,
   getAllIngredients,
+  getAllIngredientCategories,
+  createIngredientCategory,
+  deleteIngredientCategory,
   getFridgeItems,
   addFridgeItem,
   removeFridgeItem,
   IngredientWithCategory,
+  IngredientCategory,
   FridgeItem,
 } from '../db';
-import { getColor } from '../components';
-import { Card, Input, Button, IconButton, EmptyState, Spinner, useToast } from '../components';
+import { INGREDIENT_CATEGORY_COLORS, resolveIngredientCategoryColor } from '../ingredientCategoryColors';
+import { ColorDot, ConfirmDialog, EmptyState, Input, SegmentedControl, Spinner, useToast } from '../components';
+import styles from './IngredientManagementPage.module.css';
+
+type Tab = 'fridge' | 'categories';
+
+interface FridgeGroup {
+  key: string;
+  label: string;
+  color: string | null;
+  items: FridgeItem[];
+}
 
 function IngredientManagementPage() {
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+
+  const [tab, setTab] = useState<Tab>('fridge');
   const [ingredientMap, setIngredientMap] = useState<Record<string, IngredientWithCategory>>({});
   const [recipeIngredientNames, setRecipeIngredientNames] = useState<string[]>([]);
   const [fridgeItems, setFridgeItems] = useState<FridgeItem[]>([]);
+  const [categories, setCategories] = useState<IngredientCategory[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [newFridgeItemName, setNewFridgeItemName] = useState('');
   const [addingFridgeItem, setAddingFridgeItem] = useState(false);
-  const { showToast } = useToast();
+
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState(INGREDIENT_CATEGORY_COLORS[0].key);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState<IngredientCategory | null>(null);
 
   const load = async () => {
-    const [map, names, fridge] = await Promise.all([
+    const [map, names, fridge, cats] = await Promise.all([
       getIngredientCategoryMap(),
       getAllIngredients(),
       getFridgeItems(),
+      getAllIngredientCategories(),
     ]);
     setIngredientMap(map);
     setRecipeIngredientNames(names);
     setFridgeItems(fridge);
+    setCategories(cats);
     setLoading(false);
   };
 
@@ -65,90 +89,201 @@ function IngredientManagementPage() {
     }
   };
 
+  const handleCreateCategory = async () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    setCreatingCategory(true);
+    try {
+      await createIngredientCategory(trimmed, newCategoryColor);
+      setNewCategoryName('');
+      const cats = await getAllIngredientCategories();
+      setCategories(cats);
+    } catch (err) {
+      showToast('新增分類失敗:' + String(err), 'error');
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!deletingCategory) return;
+    await deleteIngredientCategory(deletingCategory.id);
+    setDeletingCategory(null);
+    const [cats, map] = await Promise.all([getAllIngredientCategories(), getIngredientCategoryMap()]);
+    setCategories(cats);
+    setIngredientMap(map);
+  };
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    Object.values(ingredientMap).forEach((info) => {
+      if (info.categoryId) counts[info.categoryId] = (counts[info.categoryId] || 0) + 1;
+    });
+    return counts;
+  }, [ingredientMap]);
+
+  const fridgeGroups: FridgeGroup[] = useMemo(() => {
+    const known = categories
+      .map((cat) => ({
+        key: cat.id,
+        label: cat.name,
+        color: cat.color,
+        items: fridgeItems.filter((f) => ingredientMap[f.name]?.categoryId === cat.id),
+      }))
+      .filter((g) => g.items.length > 0);
+    const uncategorized = fridgeItems.filter((f) => !ingredientMap[f.name]?.categoryId);
+    return uncategorized.length > 0
+      ? [...known, { key: '__none__', label: '未分類', color: null, items: uncategorized }]
+      : known;
+  }, [fridgeItems, categories, ingredientMap]);
+
   if (loading) {
     return (
-      <div style={{ padding: 'var(--space-4)', display: 'flex', justifyContent: 'center' }}>
+      <div className={styles.loading}>
         <Spinner />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 'var(--space-4)', maxWidth: 700, margin: '0 auto', paddingBottom: 96 }}>
-      <Link to="/" style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', textDecoration: 'none' }}>← 返回菜色列表</Link>
+    <div className={styles.page}>
+      <div className={styles.header}>
+        <button type="button" className={styles.backBtn} onClick={() => navigate('/shopping')} aria-label="回到採買清單">
+          <ArrowLeft size={19} strokeWidth={2.5} />
+        </button>
+        <h1 className={styles.pageTitle}>冰箱與食材</h1>
+      </div>
 
-      <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: '0 0 var(--space-1)' }}>
-        🧊 冰箱庫存({fridgeItems.length})
-      </h2>
-      <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', margin: '0 0 var(--space-3)' }}>
-        這裡列出的是冰箱裡真正現在有的東西,不是食譜曾經用過的所有食材。買了就加進來,用完了就移除;採買清單勾選「冰箱有」時也會自動加進這裡。
-      </p>
-      <Card style={{ padding: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-          <div style={{ flex: 1 }}>
+      <SegmentedControl
+        className={styles.tabSwitch}
+        options={[
+          { value: 'fridge', label: '冰箱有什麼' },
+          { value: 'categories', label: '食材分類' },
+        ]}
+        value={tab}
+        onChange={(v) => setTab(v as Tab)}
+      />
+
+      {tab === 'fridge' ? (
+        <>
+          <div className={styles.addRow}>
             <Input
               value={newFridgeItemName}
               onChange={(e) => setNewFridgeItemName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddFridgeItem())}
               placeholder="例如:雞蛋、青江菜"
-              suggestions={recipeIngredientNames}
+              suggestions={recipeIngredientNames.filter((n) => !fridgeItems.some((f) => f.name === n))}
+              onSuggestionSelect={(name) => setNewFridgeItemName(name)}
+              style={{ minHeight: 44 }}
             />
+            <button
+              type="button"
+              className={styles.roundAddBtn}
+              onClick={handleAddFridgeItem}
+              disabled={addingFridgeItem || !newFridgeItemName.trim()}
+              aria-label="新增到冰箱"
+            >
+              <Plus size={18} strokeWidth={2.75} />
+            </button>
           </div>
-          <Button
-            variant="secondary"
-            onClick={handleAddFridgeItem}
-            loading={addingFridgeItem}
-            disabled={!newFridgeItemName.trim()}
-          >
-            新增
-          </Button>
-        </div>
 
-        {fridgeItems.length === 0 ? (
-          <EmptyState icon="🧊" title="冰箱目前是空的" description="新增一項,或去採買清單勾選「冰箱有」也會自動加進來。" />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {fridgeItems.map((item) => {
-              const info = ingredientMap[item.name];
-              const color = getColor(info?.color);
-              return (
-                <div
-                  key={item.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 'var(--space-2) 0',
-                    borderBottom: '1px solid var(--color-border)',
-                  }}
-                >
-                  <span
-                    style={{
-                      background: color.bg,
-                      color: color.text,
-                      padding: '2px var(--space-2)',
-                      borderRadius: 'var(--radius-control)',
-                      font: 'var(--font-caption)',
-                    }}
-                  >
-                    {item.name}
-                  </span>
-                  <IconButton
-                    icon="×"
-                    label="用完了,從冰箱移除"
-                    danger
-                    onClick={() => handleRemoveFridgeItem(item.name)}
-                  />
+          {fridgeItems.length === 0 ? (
+            <EmptyState title="冰箱是空的" description="新增一項,或去採買清單勾選也會自動加進來。" />
+          ) : (
+            fridgeGroups.map((group) => (
+              <div key={group.key} className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  {group.color && (
+                    <span
+                      className={styles.categoryDot}
+                      style={{ background: resolveIngredientCategoryColor(group.color) }}
+                    />
+                  )}
+                  <span className={styles.sectionLabel}>{group.label}</span>
+                  <span className={styles.sectionLine} />
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
+                {group.items.map((item) => (
+                  <div key={item.id} className={styles.itemRow}>
+                    <span className={styles.itemName}>{item.name}</span>
+                    <button
+                      type="button"
+                      className={styles.iconBtn}
+                      onClick={() => handleRemoveFridgeItem(item.name)}
+                      aria-label={`${item.name} 用完了,從冰箱移除`}
+                    >
+                      <Trash2 size={17} strokeWidth={2.25} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </>
+      ) : (
+        <>
+          {categories.length === 0 ? (
+            <EmptyState title="還沒有任何分類" description="在下面建立第一個食材分類。" />
+          ) : (
+            categories.map((cat) => (
+              <div key={cat.id} className={styles.categoryRow}>
+                <span
+                  className={styles.itemDotBig}
+                  style={{ background: resolveIngredientCategoryColor(cat.color) }}
+                />
+                <span className={styles.categoryName}>{cat.name}</span>
+                <span className={styles.categoryCount}>{categoryCounts[cat.id] || 0} 項食材</span>
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  onClick={() => setDeletingCategory(cat)}
+                  aria-label={`刪除分類${cat.name}`}
+                >
+                  <Trash2 size={17} strokeWidth={2.25} />
+                </button>
+              </div>
+            ))
+          )}
 
-      <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)', textAlign: 'center', marginTop: 'var(--space-4)' }}>
-        食材分類(顏色標籤)設定已搬到「個人」頁。
-      </p>
+          <div className={styles.newCategoryCard}>
+            <div className={styles.newCategoryRow}>
+              <input
+                className={styles.newCategoryInput}
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCreateCategory())}
+                placeholder="新分類名稱,例如:蔬菜"
+              />
+              {INGREDIENT_CATEGORY_COLORS.map((c) => (
+                <ColorDot
+                  key={c.key}
+                  color={c}
+                  size={30}
+                  selected={newCategoryColor === c.key}
+                  onClick={() => setNewCategoryColor(c.key)}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              className={styles.createCategoryBtn}
+              onClick={handleCreateCategory}
+              disabled={creatingCategory || !newCategoryName.trim()}
+            >
+              新增分類
+            </button>
+          </div>
+        </>
+      )}
+
+      <ConfirmDialog
+        open={!!deletingCategory}
+        title="刪除分類"
+        description="刪除這個分類後,原本屬於這個分類的食材會變成「未分類」,確定要刪除嗎?"
+        confirmLabel="刪除"
+        danger
+        onConfirm={handleDeleteCategory}
+        onCancel={() => setDeletingCategory(null)}
+      />
     </div>
   );
 }

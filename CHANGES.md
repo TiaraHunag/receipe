@@ -1,35 +1,49 @@
-# UI 改版 Step3 — 畫面7「採買清單」
-
-## 修改
-- src/pages/ShoppingListPage.tsx（README 畫面7整個重寫）
-- src/components/Checkbox/Checkbox.tsx（加 shape="circle"／hideLabel 兩個 prop）
-- src/components/Checkbox/Checkbox.module.css（圓形勾選圈樣式）
+# UI 改版 Step3 — 畫面8「冰箱與食材」+ 畫面9「我的」（最後兩個畫面）
 
 ## 新增
-- src/pages/ShoppingListPage.module.css
+- src/ingredientCategoryColors.ts —— README 新的六色食材分類色盤
+  （肉類/海鮮/蔬菜/豆製品/調味料/乾貨）+ 顏色解析工具函式
+- src/pages/IngredientManagementPage.module.css
+- src/pages/ProfilePage.module.css
 
-## 這頁做的取捨
+## 修改
+- src/pages/IngredientManagementPage.tsx（README 畫面8：分頁切換成「冰箱有什麼」
+  ／「食材分類」兩個分頁，食材分類管理從個人頁搬回這裡）
+- src/pages/ProfilePage.tsx（README 畫面9：拿掉食材分類管理，一週起始日
+  改成 7 個等寬按鈕，資料備份改成滿寬列表按鈕）
+- src/components/ColorDot/ColorDot.tsx（拿掉對舊版九色 ColorOption 型別的
+  綁定，改成一個通用的 {key,label,bg} 形狀，新增 size prop）
+- src/pages/DishFormPage.tsx（新增食材分類時的顏色選擇，改用新的六色盤
+  取代舊的九色盤）
+- src/pages/DishDetailPage.tsx／src/pages/ShoppingListPage.tsx
+  （分類色點改呼叫 ingredientCategoryColors.ts 的共用函式，取代我前幾次
+  各自寫的暫時性替代邏輯）
 
-- **不再分「需採買」/「冰箱已有」兩張卡片**，改成 README 要的單一清單，
-  依食材分類分段(用你在「食材分類」設定的分類與順序)，冰箱已有的項目排到
-  每段最後、加刪除線,不是搬到另一張卡片。
-- **額外項目的改名**：原本是彈出 Modal 對話框改名，README 要的是「該列直接
-  變成輸入框 + 完成按鈕」，這次照這樣改了，拿掉了原本的 Modal。也拿掉了
-  SwipeableRow 左滑手勢——README 明確要求編輯/刪除要有「看得到的按鈕」
-  （已經做了：鉛筆／垃圾桶兩顆 40×44 的按鈕），滑動手勢變成多餘的，
-  怕跟「點下去變成輸入框」這個新互動衝突就先不留著；如果你很習慣左滑
-  刪除,跟我說一聲我可以評估要不要兩個都留。
-- **拿掉右下角浮動 FAB**，改成 README 要的「底部常駐輸入列」(在分頁列
-  上方,固定式,input + 圓形 ＋ 鈕)。空白按 ＋ 會跳 Toast 提示,不再靜默失敗。
-- **勾選/取消勾選、刪除額外項目都各補了一則 Toast**（README 的 Interactions
-  段落列了好幾個 toast 文案範例，這頁之前完全沒有任何 toast 提示）。
-- 拿掉了頁尾那句「食材不記數量…」的說明文字——README 的採買清單畫面規格
-  裡沒有這行，如果你想留著提醒使用者，跟我說我再加回去（可以用小字放在
-  「其他要買的」段落下面）。
-- 「冰箱」按鈕 → `/ingredients`；README 說這個入口未來要整合進「冰箱與食材」
-  畫面（下一步 Step8 才會做），現在先連到既有的 `IngredientManagementPage`，
-  等 Step8 做完那頁換了新樣子之後這個連結行為不變、畫面會自動更新。
+## 最重要的一個變化：食材分類顏色系統換成新的六色盤
 
-一樣照最新的 commit 重新拉一次驗證過，`npx tsc --noEmit`、`npx vite build`
-都過關，沒有動到 MenuPage/MenuDayPage/DishListPage 等其他已經做過的頁面，
-也沒有動到你自己在做的 ProfilePage/IngredientManagementPage。
+之前「新增食材分類」用的是舊版 9 色標籤盤（存的是 'green'／'brown' 這種
+key 字串）。這次照 README 換成新的六色盤（肉類/海鮮/蔬菜/豆製品/調味料/
+乾貨），**新建立的分類會直接把 hex 值存進 `ingredient_categories.color`**，
+不再存 key 字串。
+
+**舊資料完全相容，不需要手動搬移**：如果分類是很久以前用舊 9 色盤建的，
+`color` 欄位還是存著舊的 key 字串，畫面上的圓點顏色會透過
+`resolveIngredientCategoryColor()` 自動用舊色盤的顏色顯示，不會壞掉、
+也不會消失——只是新舊分類的顏色風格可能不太一致（新的是六色盤裡的顏色，
+舊的還是舊9色盤的顏色）。如果你想讓舊分類也換成新色盤,最簡單的做法是
+到「冰箱與食材」→「食材分類」把舊分類刪掉重建(食材會變成未分類,再重新
+用建議 chip 快速加回去)，或者跟我說,我可以寫一個小工具幫你把舊分類的
+顏色一次性轉成新色盤裡最接近的顏色。
+
+## 其他取捨
+
+- 冰箱新增食材的輸入框改用跟其他頁面一致的自動完成建議(共用 Input 元件)，
+  原本試過瀏覽器原生 `<input list>`，體驗比較弱就換掉了。
+- 「常備品」這次還是完全沒做，等你之後確認 schema 再一起加。
+
+已經照最新的 commit 重新拉一次確認過，`npx tsc --noEmit`、`npx vite build`
+都過關，沒有動到你自己在做的 MenuPage/MenuDayPage 等其他頁面。
+
+---
+
+**這是 README 九個畫面的最後一批**，Step1～Step3 全部畫面都做完了。
