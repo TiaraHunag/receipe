@@ -1,0 +1,76 @@
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--page-padding-x);
+  padding-bottom: calc(var(--tabbar-safe-bottom) + env(safe-area-inset-bottom, 0px));
+  z-index: 100;
+  /* 分頁列本身只佔螢幕下方一小塊，其餘透空的地方不該擋住底下內容的點擊/捲動 */
+  pointer-events: none;
+}
+
+.pill {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  box-shadow: var(--shadow-float);
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  color: var(--text-4);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.tab.active {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.iconWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.label {
+  font: 700 12.5px/1 var(--font-family);
+  white-space: nowrap;
+}
+
+.badge {
+  position: absolute;
+  top: -7px;
+  right: -9px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-primary);
+  font: var(--font-badge);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}

@@ -1,0 +1,27 @@
+.track {
+  flex: none;
+  width: 58px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--track);
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.track.on {
+  background: var(--primary);
+  justify-content: flex-end;
+}
+
+.thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface);
+  display: block;
+}

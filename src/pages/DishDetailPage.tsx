@@ -1,55 +1,68 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { getDishById, deleteDish, Dish, getIngredientCategoryMap, IngredientWithCategory } from '../db';
-import IngredientTag from '../components/IngredientTag';
-import { Button, Tag, ConfirmDialog, Spinner, useToast, colorForLabel } from '../components';
+import { ArrowLeft, Pencil, Link2, Trash2, Clock } from 'lucide-react';
+import { getDishById, deleteDish, getFridgeItems, getIngredientCategoryMap, Dish, IngredientWithCategory, COURSE_LABELS } from '../db';
+import { getColor } from '../components';
+import { ConfirmDialog, Spinner, useToast, useAddToMenu } from '../components';
+import styles from './DishDetailPage.module.css';
 
 function linkify(text: string): (string | JSX.Element)[] {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
-  return parts.map((part, i) =>
-    urlRegex.test(part) ? (
-      <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-danger)', wordBreak: 'break-all' }}>
-        {part}
-      </a>
-    ) : (
-      part
-    )
-  );
+  return parts.map((part, i) => (urlRegex.test(part) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer">{part}</a> : part));
+}
+
+/** 舊版 9 色標籤盤還沒有「單一飽和色圓點」這種語意，先借用該色的深字色當圓點顏色，
+ *  等「冰箱與食材」畫面換成 README 的六色盤後這裡可以直接改用那個 hex 值。 */
+function categoryDotColor(colorKey: string | null | undefined): string {
+  return getColor(colorKey).text;
 }
 
 function DishDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { openAddToMenu } = useAddToMenu();
+
   const [dish, setDish] = useState<Dish | null>(null);
-  const [ingredientMap, setIngredientMap] = useState<Record<string, IngredientWithCategory>>({});
+  const [fridgeNames, setFridgeNames] = useState<Set<string>>(new Set());
+  const [categoryMap, setCategoryMap] = useState<Record<string, IngredientWithCategory>>({});
   const [loading, setLoading] = useState(true);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    const fetchDish = async () => {
+    const load = async () => {
       if (!id) return;
-      const [result, map] = await Promise.all([getDishById(id), getIngredientCategoryMap()]);
+      const [result, fridgeItems, map] = await Promise.all([
+        getDishById(id),
+        getFridgeItems(),
+        getIngredientCategoryMap(),
+      ]);
       setDish(result);
-      setIngredientMap(map);
+      setFridgeNames(new Set(fridgeItems.map((f) => f.name)));
+      setCategoryMap(map);
       setLoading(false);
     };
-    fetchDish();
+    load();
   }, [id]);
 
   if (loading) {
     return (
-      <div style={{ padding: 'var(--space-4)', display: 'flex', justifyContent: 'center' }}>
+      <div className={styles.loading}>
         <Spinner />
       </div>
     );
   }
-  if (!dish) return <div style={{ padding: 'var(--space-4)', color: 'var(--color-text-secondary)' }}>找不到這道菜</div>;
+
+  if (!dish) {
+    return <div className={styles.notFound}>找不到這道菜</div>;
+  }
 
   const sourceIsUrl = !!dish.source && /^https?:\/\//.test(dish.source);
   const recipeSourceUrl = dish.recipe?.sourceUrl || '';
+  const hasMeta = !!dish.source || !!dish.notes;
+  const inStockCount = dish.ingredients.filter((ing) => fridgeNames.has(ing)).length;
 
   const handleDelete = async () => {
     if (!id) return;
@@ -64,120 +77,157 @@ function DishDetailPage() {
     }
   };
 
+  const handlePlan = () => {
+    openAddToMenu({ course: dish.courseTypes[0], query: dish.name });
+  };
+
   return (
-    <div style={{ padding: 'var(--space-4) var(--space-4) 96px', maxWidth: 560, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
-        <Link to="/" style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', textDecoration: 'none' }}>← 返回列表</Link>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <Link to={`/edit/${id}`} style={{ textDecoration: 'none' }}>
-            <Button type="button" variant="secondary" size="sm">編輯</Button>
-          </Link>
-          <Button type="button" variant="danger" size="sm" onClick={() => setConfirmingDelete(true)}>刪除</Button>
-        </div>
+    <div className={styles.page}>
+      <div className={styles.cover}>
+        {dish.recipe?.coverPhotoPath ? (
+          <img src={dish.recipe.coverPhotoPath} alt="" className={styles.coverImg} />
+        ) : (
+          <span className={styles.coverPill}>沒有封面照片</span>
+        )}
+        <Link to="/" className={`${styles.roundBtn} ${styles.backBtn}`} aria-label="返回">
+          <ArrowLeft size={20} strokeWidth={2.75} />
+        </Link>
+        <Link to={`/edit/${id}`} className={`${styles.roundBtn} ${styles.editBtn}`} aria-label="編輯">
+          <Pencil size={19} strokeWidth={2.75} />
+        </Link>
       </div>
 
-      <h1 style={{ font: 'var(--font-title)', fontSize: 26, color: 'var(--color-text)', margin: '0 0 var(--space-3)', lineHeight: 1.3 }}>
-        {dish.name}
-      </h1>
+      <div className={styles.content}>
+        <h1 className={styles.dishName}>{dish.name}</h1>
 
-      {dish.category.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginBottom: dish.tags?.length ? 'var(--space-2)' : 'var(--space-5)' }}>
+        <div className={styles.chipRow}>
           {dish.category.map((c) => (
-            <Tag key={c} color={colorForLabel(c)}>{c}</Tag>
+            <span key={`c-${c}`} className={`${styles.detailChip} ${styles.chipCategory}`}>
+              {c}
+            </span>
           ))}
-        </div>
-      )}
-
-      {dish.tags?.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginBottom: 'var(--space-5)' }}>
+          {dish.courseTypes.map((c) => (
+            <span key={`t-${c}`} className={`${styles.detailChip} ${styles.chipCourse}`}>
+              {COURSE_LABELS[c]}
+            </span>
+          ))}
+          {dish.prepAhead && (
+            <span className={`${styles.detailChip} ${styles.chipPrepAhead}`}>
+              <Clock size={10} strokeWidth={3} />
+              可先做
+            </span>
+          )}
           {dish.tags.map((t) => (
-            <Tag key={t} color="green">{t}</Tag>
+            <span key={`g-${t}`} className={`${styles.detailChip} ${styles.chipTag}`}>
+              #{t}
+            </span>
           ))}
         </div>
-      )}
 
-      {dish.ingredients.length > 0 && (
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <div style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>食材</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-            {dish.ingredients.map((ing) => (
-              <IngredientTag key={ing} name={ing} colorKey={ingredientMap[ing]?.color} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', font: 'var(--font-body)', color: 'var(--color-text)', marginBottom: dish.source ? 'var(--space-2)' : 0 }}>
-          <span style={{ color: dish.prepAhead ? 'var(--color-primary)' : 'var(--color-text-placeholder)' }}>{dish.prepAhead ? '✓' : '–'}</span>
-          <span>{dish.prepAhead ? '可預先製作' : '不可預先製作'}</span>
-        </div>
-        {dish.source && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', font: 'var(--font-body)' }}>
-            <span style={{ color: 'var(--color-text-secondary)' }}>來源</span>
-            {sourceIsUrl ? (
-              <a href={dish.source} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-danger)', wordBreak: 'break-all' }}>
-                {dish.source}
-              </a>
-            ) : (
-              <span style={{ color: 'var(--color-text)' }}>{dish.source}</span>
+        {hasMeta && (
+          <div className={styles.metaCard}>
+            {dish.source && (
+              <div className={styles.metaRow}>
+                <span className={styles.metaLabel}>來源</span>
+                <span className={styles.metaValue}>
+                  {sourceIsUrl ? (
+                    <a href={dish.source} target="_blank" rel="noopener noreferrer">
+                      {dish.source}
+                    </a>
+                  ) : (
+                    dish.source
+                  )}
+                </span>
+              </div>
             )}
+            {dish.notes && (
+              <div className={styles.metaRow}>
+                <span className={styles.metaLabel}>備註</span>
+                <span className={styles.metaValue}>{dish.notes}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {dish.ingredients.length > 0 && (
+          <div className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <span className={styles.sectionLabel}>食材 {dish.ingredients.length}</span>
+              <span className={styles.sectionMeta}>{inStockCount} 項冰箱有</span>
+            </div>
+            <div className={styles.ingredientCard}>
+              {dish.ingredients.map((ing) => {
+                const info = categoryMap[ing];
+                const inStock = fridgeNames.has(ing);
+                return (
+                  <div key={ing} className={styles.ingredientRow}>
+                    <span
+                      className={styles.categoryDot}
+                      style={{ background: categoryDotColor(info?.color) }}
+                    />
+                    <div className={styles.ingredientInfo}>
+                      <div className={styles.ingredientName}>{ing}</div>
+                      {info?.categoryName && (
+                        <div className={styles.ingredientCategoryName}>{info.categoryName}</div>
+                      )}
+                    </div>
+                    <span className={`${styles.stockPill} ${inStock ? styles.stockPillIn : styles.stockPillOut}`}>
+                      {inStock ? '冰箱有' : '要買'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {dish.hasRecipe && dish.recipe ? (
+          <div className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <span className={styles.sectionLabel}>食譜內容</span>
+              {recipeSourceUrl && (
+                <a href={recipeSourceUrl} target="_blank" rel="noopener noreferrer" className={styles.sectionLink}>
+                  <Link2 size={14} strokeWidth={2.5} />
+                  原始連結
+                </a>
+              )}
+            </div>
+            {dish.recipe.content?.map((block, i) =>
+              block.type === 'text' ? (
+                <p key={i} className={styles.recipeParagraph}>
+                  {linkify(block.text || '')}
+                </p>
+              ) : (
+                <img key={i} src={block.path} alt="" className={styles.recipeImage} />
+              )
+            )}
+          </div>
+        ) : (
+          <div className={styles.section}>
+            <div className={styles.noRecipeCard}>
+              <div className={styles.noRecipeTitle}>這道菜還沒有食譜</div>
+              <div className={styles.noRecipeDesc}>只記了食材,之後想寫做法或貼照片都可以補。</div>
+              <Link to={`/edit/${id}`} className={styles.sectionLink}>
+                補上食譜
+              </Link>
+            </div>
           </div>
         )}
       </div>
 
-      {dish.notes && (
-        <div
-          style={{
-            borderLeft: '3px solid var(--color-primary)',
-            paddingLeft: 'var(--space-3)',
-            marginBottom: 'var(--space-5)',
-            font: 'var(--font-body)',
-            color: 'var(--color-text-secondary)',
-            fontStyle: 'italic',
-            lineHeight: 1.6,
-          }}
+      <div className={styles.footer}>
+        <button type="button" className={styles.planBtn} onClick={handlePlan}>
+          排進菜單
+        </button>
+        <button
+          type="button"
+          className={styles.deleteBtn}
+          onClick={() => setConfirmingDelete(true)}
+          aria-label="刪除這道菜"
         >
-          {dish.notes}
-        </div>
-      )}
-
-      {dish.hasRecipe && dish.recipe && (
-        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)' }}>
-          <h2 style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)', margin: '0 0 var(--space-3)' }}>食譜內容</h2>
-
-          {recipeSourceUrl && (
-            <a href={recipeSourceUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 'var(--space-4)' }}>
-              <Button type="button" variant="danger" size="sm">🔗 查看原始食譜</Button>
-            </a>
-          )}
-
-          {dish.recipe.content?.map((block, i) =>
-            block.type === 'text' ? (
-              <p
-                key={i}
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  font: 'var(--font-body)',
-                  fontSize: 15.5,
-                  lineHeight: 1.8,
-                  color: 'var(--color-text)',
-                  margin: '0 0 var(--space-3)',
-                }}
-              >
-                {linkify(block.text || '')}
-              </p>
-            ) : (
-              <img
-                key={i}
-                src={block.path}
-                alt=""
-                style={{ maxWidth: '100%', borderRadius: 'var(--radius-card)', margin: '8px 0 var(--space-3)' }}
-              />
-            )
-          )}
-        </div>
-      )}
+          <Trash2 size={20} strokeWidth={2.25} />
+        </button>
+      </div>
 
       <ConfirmDialog
         open={confirmingDelete}
@@ -189,7 +239,7 @@ function DishDetailPage() {
         onCancel={() => setConfirmingDelete(false)}
       />
       {deleting && (
-        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.1)', zIndex: 200 }}>
+        <div className={styles.deletingOverlay}>
           <Spinner />
         </div>
       )}

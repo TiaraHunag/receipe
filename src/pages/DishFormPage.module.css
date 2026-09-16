@@ -1,0 +1,411 @@
+.page {
+  padding: var(--page-padding-top) var(--page-padding-x) calc(40px + env(safe-area-inset-bottom, 0px));
+}
+
+.loading {
+  padding: var(--page-padding-top) var(--page-padding-x);
+  color: var(--text-3);
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.backBtn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pageTitle {
+  margin: 0 0 18px;
+  font: var(--font-page-title);
+  color: var(--text);
+}
+
+.field {
+  margin-bottom: 18px;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 8px;
+  font: 600 13px/1.3 var(--font-family);
+  color: var(--text);
+}
+
+.fieldHint {
+  margin: 4px 0 0;
+  font: 400 12px/1.5 var(--font-family);
+  color: var(--text-4);
+}
+
+.nameInput {
+  min-height: 48px;
+  font-size: 15px;
+}
+
+/* ---- 可多選 chip 群(餐點分類／餐點類型) ---- */
+.chipWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.selectChip {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: 600 13px/1 var(--font-family);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.selectChipActive {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.addRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.addRow > :first-child {
+  flex: 1;
+}
+
+.roundAddBtn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--primary);
+  color: var(--on-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.roundAddBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- 標籤 chip(強調色) ---- */
+.tagChip {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid #e0d3c4;
+  background: transparent;
+  color: var(--accent-ink);
+  font: 600 12.5px/1 var(--font-family);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tagChipActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-primary);
+}
+
+/* ---- 食材已選 chip ---- */
+.ingredientChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 6px 0 14px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-tint);
+  color: var(--primary-ink);
+  font: 600 13px/1 var(--font-family);
+}
+
+.ingredientRemoveBtn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(63, 74, 50, 0.12);
+  color: var(--primary-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+}
+
+.ingredientSuggestChip {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1.5px dashed var(--border-dash);
+  background: transparent;
+  color: var(--text-3);
+  font: 600 12.5px/1 var(--font-family);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ---- 新食材選分類提示卡 ---- */
+.pendingCard {
+  margin-top: 10px;
+  background: var(--surface-2);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.pendingHint {
+  margin: 0 0 8px;
+  font: 400 12.5px/1.5 var(--font-family);
+  color: var(--text-3);
+}
+
+.pendingCatRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.pendingCatBtn {
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
+  font: 600 12px/1 var(--font-family);
+  cursor: pointer;
+}
+
+.pendingLinkBtn {
+  border: none;
+  background: none;
+  font: 400 12.5px/1 var(--font-family);
+  color: var(--text-4);
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.newCatRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.newCatInput {
+  min-height: 38px;
+  font-size: 13px;
+  max-width: 160px;
+}
+
+/* ---- 開關卡 ---- */
+.toggleCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+
+.toggleTitle {
+  font: 700 14.5px/1.3 var(--font-family);
+  color: var(--text);
+}
+
+.toggleDesc {
+  margin-top: 2px;
+  font: 400 12px/1.4 var(--font-family);
+  color: var(--text-4);
+}
+
+.sourceInput {
+  min-height: 46px;
+}
+
+.notesTextarea {
+  min-height: 88px;
+  padding: 14px 18px;
+  font: 400 14px/1.7 var(--font-family);
+}
+
+/* ---- 食譜區塊 ---- */
+.recipeCard {
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.coverUpload {
+  position: relative;
+  height: 120px;
+  border-radius: 16px;
+  border: 1.5px dashed var(--border-dash);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-4);
+  font: 600 13px/1 var(--font-family);
+  cursor: pointer;
+  overflow: hidden;
+  margin-bottom: 14px;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.coverPreview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.coverRemoveBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(32, 36, 28, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.urlInput {
+  min-height: 46px;
+  margin-bottom: 14px;
+}
+
+.block {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.blockIndex {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary-tint);
+  color: var(--primary-dark);
+  font: 700 12px/1 var(--font-family);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.blockBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.blockTextarea {
+  min-height: 70px;
+  font-size: 14px;
+}
+
+.blockImageBox {
+  position: relative;
+  height: 96px;
+  border-radius: 14px;
+  border: 1.5px dashed var(--border-dash);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-4);
+  font: 400 12.5px/1 var(--font-family);
+  cursor: pointer;
+  overflow: hidden;
+  background: transparent;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.blockImagePreview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.blockRemoveBtn {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.recipeBtnRow {
+  display: flex;
+  gap: 10px;
+}
+
+.recipeDashedBtn {
+  flex: 1;
+  min-height: 46px;
+  border-radius: 16px;
+  border: 1.5px dashed var(--border-dash);
+  background: transparent;
+  color: var(--text-3);
+  font: 600 12.5px/1 var(--font-family);
+  cursor: pointer;
+}
+
+.errorText {
+  margin: -6px 0 12px;
+  font: 400 12.5px/1.4 var(--font-family);
+  color: var(--color-danger);
+}
+
+.saveBtnTop {
+  flex: none;
+}
+
+.hiddenFileInput {
+  display: none;
+}

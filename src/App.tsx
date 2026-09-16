@@ -11,6 +11,7 @@ import ShoppingListPage from './pages/ShoppingListPage';
 import ProfilePage from './pages/ProfilePage';
 import QuickAddPage from './pages/QuickAddPage';
 import BottomTabBar from './components/BottomTabBar';
+import { AddToMenuProvider } from './components/AddToMenu/AddToMenuContext';
 import { initDB } from './db';
 import SharedContent from './plugins/sharedContent';
 
@@ -53,7 +54,7 @@ function App() {
   }, [navigate]);
 
   return (
-    <>
+    <AddToMenuProvider>
       <Routes>
         <Route path="/" element={<DishListPage />} />
         <Route path="/new" element={<DishFormPage />} />
@@ -68,7 +69,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       {!shouldHideTabBar(location.pathname) && <BottomTabBar />}
-    </>
+    </AddToMenuProvider>
   );
 }
 

@@ -10,8 +10,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: var(--bg);
+  color: var(--text);
   font: var(--font-body);
   -webkit-tap-highlight-color: transparent;
   padding-top: env(safe-area-inset-top, 0px);

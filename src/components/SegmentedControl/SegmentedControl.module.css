@@ -1,25 +1,26 @@
 .track {
   display: inline-flex;
   padding: 3px;
-  background: var(--color-surface-sunken);
+  background: var(--surface-3);
   border-radius: var(--radius-pill);
   gap: 2px;
 }
 
 .segment {
+  flex: 1;
   border: none;
   background: transparent;
-  padding: var(--space-2) var(--space-4);
+  padding: 0 var(--space-4);
   border-radius: var(--radius-pill);
-  font: var(--font-label);
-  color: var(--color-text-secondary);
+  font: var(--font-button-sm);
+  color: var(--text-4);
   cursor: pointer;
   transition: background-color var(--transition-fast), color var(--transition-fast);
-  min-height: 36px;
+  min-height: 38px;
+  white-space: nowrap;
 }
 
 .active {
-  background: var(--color-surface);
-  color: var(--color-text);
-  box-shadow: 0 1px 3px rgba(43, 42, 40, 0.12);
+  background: var(--primary);
+  color: var(--on-primary);
 }

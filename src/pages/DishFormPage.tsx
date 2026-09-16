@@ -1,8 +1,6 @@
-// ============================================================================
-// src/pages/DishFormPage.tsx (完整覆蓋 — 顏色改用統一色盤;修正新食材分類提示判斷邏輯;新增離開保護)
-// ============================================================================
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { ArrowLeft, Plus, X, Camera, Image as ImageIcon } from 'lucide-react';
 import {
   getDishById,
   insertDish,
@@ -20,20 +18,17 @@ import {
   COURSE_LABELS,
   COURSE_ORDER,
 } from '../db';
-import IngredientTag from '../components/IngredientTag';
 import {
   TAG_COLOR_OPTIONS,
-  getColor,
   Input,
   Textarea,
-  Checkbox,
   Button,
-  Tag,
-  Card,
-  IconButton,
+  Toggle,
+  ColorDot,
   ConfirmDialog,
   useToast,
 } from '../components';
+import styles from './DishFormPage.module.css';
 
 interface ContentBlock {
   type: 'text' | 'image';
@@ -41,8 +36,18 @@ interface ContentBlock {
   path?: string;
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 function DishFormPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const isEditMode = Boolean(id);
   const { showToast } = useToast();
@@ -65,13 +70,13 @@ function DishFormPage() {
   const [ingredientInput, setIngredientInput] = useState('');
 
   const [hasRecipe, setHasRecipe] = useState(false);
+  const [coverPhotoPath, setCoverPhotoPath] = useState('');
   const [content, setContent] = useState<ContentBlock[]>([]);
   const [recipeSourceUrl, setRecipeSourceUrl] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [loadingData, setLoadingData] = useState(isEditMode);
   const [nameError, setNameError] = useState<string | null>(null);
-  const [recipeError, setRecipeError] = useState<string | null>(null);
 
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [ingredientOptions, setIngredientOptions] = useState<string[]>([]);
@@ -89,6 +94,11 @@ function DishFormPage() {
   const guardActiveRef = useRef(false);
   const justSavedRef = useRef(false);
 
+  // ---- 封面/內文圖片挑選(瀏覽器/WKWebView 內建的相簿選擇器,暫不接 Capacitor Camera) ----
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const blockImageInputRef = useRef<HTMLInputElement>(null);
+  const pendingBlockIndexRef = useRef<number | null>(null);
+
   const serializeFormState = () =>
     JSON.stringify({
       name,
@@ -100,6 +110,7 @@ function DishFormPage() {
       source,
       notes,
       hasRecipe,
+      coverPhotoPath,
       content,
       recipeSourceUrl,
     });
@@ -117,6 +128,15 @@ function DishFormPage() {
     loadIngredientMeta();
   }, []);
 
+  // 從「快速加菜」sheet 的「建立新菜色並排入」帶入的預填值(只在新增模式套用一次)
+  useEffect(() => {
+    if (isEditMode) return;
+    const state = location.state as { prefillName?: string; prefillCourse?: CourseType } | undefined;
+    if (state?.prefillName) setName(state.prefillName);
+    if (state?.prefillCourse) setCourseTypes([state.prefillCourse]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!isEditMode || !id) return;
     const fetchData = async () => {
@@ -131,6 +151,7 @@ function DishFormPage() {
         setSource(data.source);
         setNotes(data.notes);
         setHasRecipe(data.hasRecipe);
+        setCoverPhotoPath(data.recipe?.coverPhotoPath || '');
         setContent(data.recipe?.content || []);
         setRecipeSourceUrl(data.recipe?.sourceUrl || '');
       }
@@ -139,8 +160,8 @@ function DishFormPage() {
     fetchData();
   }, [id, isEditMode]);
 
-  // 資料載入完成(新增模式一開始就是預設空值,編輯模式等 fetch 完成)後,記一份「初始快照」,
-  // 之後拿目前表單內容跟這份快照比對,就知道使用者有沒有做過任何異動。
+  // 資料載入完成後記一份「初始快照」,之後拿目前表單內容跟這份快照比對,
+  // 就知道使用者有沒有做過任何異動。
   useEffect(() => {
     if (loadingData) return;
     if (initialSnapshotRef.current === '') {
@@ -152,9 +173,6 @@ function DishFormPage() {
   const isDirty =
     !loadingData && initialSnapshotRef.current !== '' && serializeFormState() !== initialSnapshotRef.current;
 
-  // 有異動時,推一筆重複的歷史紀錄當防護:使用者按返回鍵/手勢返回會先觸發這筆紀錄的
-  // popstate,而不是直接離開頁面,讓我們有機會跳出確認彈窗。取消的話把防護紀錄補回去,
-  // 確認離開才真的再往前一步。
   useEffect(() => {
     if (!isDirty) {
       guardActiveRef.current = false;
@@ -175,7 +193,6 @@ function DishFormPage() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isDirty]);
 
-  // 分頁被關閉/重新整理時的最後一道防線(主要在瀏覽器/StackBlitz 測試環境有作用)
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!isDirty) return;
@@ -188,7 +205,6 @@ function DishFormPage() {
 
   const handleBackClick = () => {
     if (isDirty) {
-      // 觸發跟原生返回手勢一樣的路徑,交給上面統一的 popstate 處理
       window.history.back();
     } else {
       navigate(-1);
@@ -211,25 +227,27 @@ function DishFormPage() {
     setCategoryInput('');
   };
   const addCategory = () => addCategoryValue(categoryInput);
-  const removeCategory = (index: number) => setCategory(category.filter((_, i) => i !== index));
+  const toggleCategory = (name: string) => {
+    setCategory((prev) => (prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]));
+  };
 
+  const toggleTag = (tag: string) => {
+    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+  };
   const addTagValue = (value: string) => {
     const trimmed = value.trim();
     if (trimmed && !tags.includes(trimmed)) setTags([...tags, trimmed]);
     setTagInput('');
   };
   const addTag = () => addTagValue(tagInput);
-  const removeTag = (index: number) => setTags(tags.filter((_, i) => i !== index));
 
   const toggleCourseType = (course: CourseType) => {
-    setCourseTypes((prev) =>
-      prev.includes(course) ? prev.filter((c) => c !== course) : [...prev, course]
-    );
+    setCourseTypes((prev) => (prev.includes(course) ? prev.filter((c) => c !== course) : [...prev, course]));
   };
 
   const addIngredientValue = (value: string) => {
     const trimmed = value.trim();
-    if (trimmed) {
+    if (trimmed && !ingredients.includes(trimmed)) {
       setIngredients([...ingredients, trimmed]);
       // 只看「這個名字存不存在於 ingredientCategoryMap」不夠準——任何食材只要存過一次
       // (哪怕當時沒選分類)就會留在 ingredients_master 裡,map 裡一定查得到,
@@ -242,6 +260,8 @@ function DishFormPage() {
   };
   const addIngredient = () => addIngredientValue(ingredientInput);
   const removeIngredient = (index: number) => setIngredients(ingredients.filter((_, i) => i !== index));
+
+  const ingredientSuggestions = ingredientOptions.filter((n) => !ingredients.includes(n)).slice(0, 6);
 
   const assignCategory = async (categoryId: string | null) => {
     if (!pendingIngredient) return;
@@ -261,23 +281,48 @@ function DishFormPage() {
 
   const addTextBlock = () => setContent([...content, { type: 'text', text: '' }]);
   const addImageBlock = () => setContent([...content, { type: 'image', path: '' }]);
-  const updateBlock = (index: number, value: string) => {
-    const updated = [...content];
-    updated[index] = updated[index].type === 'text'
-      ? { ...updated[index], text: value }
-      : { ...updated[index], path: value };
-    setContent(updated);
+  const updateBlockText = (index: number, value: string) => {
+    setContent((prev) => prev.map((b, i) => (i === index ? { ...b, text: value } : b)));
   };
   const removeBlock = (index: number) => setContent(content.filter((_, i) => i !== index));
+
+  const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setCoverPhotoPath(dataUrl);
+    } catch {
+      showToast('讀取圖片失敗,請再試一次', 'error');
+    }
+  };
+
+  const openBlockFilePicker = (index: number) => {
+    pendingBlockIndexRef.current = index;
+    blockImageInputRef.current?.click();
+  };
+
+  const handleBlockFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const index = pendingBlockIndexRef.current;
+    e.target.value = '';
+    pendingBlockIndexRef.current = null;
+    if (!file || index === null) return;
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setContent((prev) => prev.map((b, i) => (i === index ? { ...b, path: dataUrl } : b)));
+    } catch {
+      showToast('讀取圖片失敗,請再試一次', 'error');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setNameError(null);
-    setRecipeError(null);
 
-    if (!name.trim()) { setNameError('請輸入菜名'); return; }
-    if (hasRecipe && content.length === 0) {
-      setRecipeError('已勾選「有詳細食譜」,請至少新增一段文字或圖片內容,或取消勾選');
+    if (!name.trim()) {
+      setNameError('菜名不能空白');
       return;
     }
 
@@ -291,7 +336,7 @@ function DishFormPage() {
         source,
         notes,
         hasRecipe,
-        recipe: hasRecipe ? { coverPhotoPath: '', sourceUrl: recipeSourceUrl.trim(), content } : null,
+        recipe: hasRecipe ? { coverPhotoPath, sourceUrl: recipeSourceUrl.trim(), content } : null,
         courseTypes,
         tags,
       };
@@ -300,8 +345,6 @@ function DishFormPage() {
         await updateDish(id, payload);
         justSavedRef.current = true;
         if (guardActiveRef.current) {
-          // 存檔成功要離開時,先跳過我們自己塞進歷史紀錄裡的那筆防護紀錄,
-          // 再回到真正的上一頁,不然只會原地不動。
           window.history.go(-2);
         } else {
           navigate(-1);
@@ -317,291 +360,371 @@ function DishFormPage() {
     }
   };
 
-  if (loadingData) return <div style={{ padding: 'var(--space-4)' }}>讀取中...</div>;
+  if (loadingData) {
+    return <div className={styles.loading}>讀取中...</div>;
+  }
 
   return (
-    <div style={{ padding: 'var(--space-4)', maxWidth: 600, margin: '0 auto', paddingBottom: 'calc(var(--space-6) + env(safe-area-inset-bottom, 0px))' }}>
-      <button
-        type="button"
-        onClick={handleBackClick}
-        style={{
-          font: 'var(--font-caption)',
-          color: 'var(--color-text-secondary)',
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          cursor: 'pointer',
-        }}
-      >
-        ‹ 上一頁
-      </button>
-      <h1 style={{ font: 'var(--font-title)', color: 'var(--color-text)', margin: 'var(--space-3) 0 var(--space-4)' }}>
-        {isEditMode ? '編輯菜色' : '新增菜色'}
-      </h1>
-
+    <div className={styles.page}>
       <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 'var(--space-5)' }}>
+        <div className={styles.topRow}>
+          <button type="button" className={styles.backBtn} onClick={handleBackClick} aria-label="返回">
+            <ArrowLeft size={19} strokeWidth={2.5} />
+          </button>
+          <Button type="submit" loading={saving} className={styles.saveBtnTop}>
+            {saving ? '儲存中...' : '儲存'}
+          </Button>
+        </div>
+
+        <h1 className={styles.pageTitle}>{isEditMode ? '編輯食譜' : '新增食譜'}</h1>
+
+        <div className={styles.field}>
           <Input
-            label="名稱 *"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="例如:番茄炒蛋"
+            placeholder="例如:三杯雞"
             error={nameError || undefined}
+            style={{ minHeight: 48, fontSize: 15 }}
           />
         </div>
 
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end' }}>
-            <div style={{ flex: 1 }}>
-              <Input
-                label="類型"
-                value={categoryInput}
-                onChange={(e) => setCategoryInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())}
-                placeholder="例如:蛋類,按 Enter 新增"
-                suggestions={categoryOptions.filter((c) => !category.includes(c))}
-                onSuggestionSelect={addCategoryValue}
-              />
-            </div>
-            <Button type="button" variant="secondary" onClick={addCategory}>新增</Button>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel}>餐點分類</label>
+          <div className={styles.chipWrap}>
+            {categoryOptions.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={[styles.selectChip, category.includes(c) ? styles.selectChipActive : '']
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => toggleCategory(c)}
+              >
+                {c}
+              </button>
+            ))}
           </div>
-          {category.length > 0 && (
-            <div style={{ marginTop: 'var(--space-2)', display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-              {category.map((c, i) => (
-                <Tag key={i} onClick={() => removeCategory(i)}>{c} ×</Tag>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end' }}>
-            <div style={{ flex: 1 }}>
-              <Input
-                label="標籤"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                placeholder="例如:快速,按 Enter 新增"
-                hint="自由輸入,例如簡單、快速、素食、宴客,跟「類型」分開,用來做更細的描述"
-                suggestions={tagOptions.filter((t) => !tags.includes(t))}
-                onSuggestionSelect={addTagValue}
-              />
-            </div>
-            <Button type="button" variant="secondary" onClick={addTag}>新增</Button>
-          </div>
-          {tags.length > 0 && (
-            <div style={{ marginTop: 'var(--space-2)', display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-              {tags.map((t, i) => (
-                <Tag key={i} color="green" onClick={() => removeTag(i)}>{t} ×</Tag>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <label style={{ font: 'var(--font-label)', color: 'var(--color-text)', display: 'block', marginBottom: 'var(--space-2)' }}>
-            餐點分類
-          </label>
-          <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', margin: '0 0 var(--space-2)' }}>
-            可複選,對應「菜單規劃」的六個分類,選好之後未來排菜單挑選時會更方便篩選
-          </p>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            {COURSE_ORDER.map((course) => {
-              const selected = courseTypes.includes(course);
-              return (
-                <button
-                  key={course}
-                  type="button"
-                  onClick={() => toggleCourseType(course)}
-                  style={{
-                    padding: '6px var(--space-4)',
-                    borderRadius: 'var(--radius-pill)',
-                    border: selected ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-                    background: selected ? 'var(--color-primary-soft)' : 'var(--color-surface)',
-                    color: selected ? 'var(--color-primary-hover)' : 'var(--color-text)',
-                    cursor: 'pointer',
-                    font: selected ? '600 13px var(--font-family)' : 'var(--font-caption)',
-                  }}
-                >
-                  {selected ? '✓ ' : ''}{COURSE_LABELS[course]}
-                </button>
-              );
-            })}
+          <div className={styles.addRow}>
+            <Input
+              value={categoryInput}
+              onChange={(e) => setCategoryInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())}
+              placeholder="新增分類"
+              style={{ minHeight: 44 }}
+            />
+            <button
+              type="button"
+              className={styles.roundAddBtn}
+              onClick={addCategory}
+              disabled={!categoryInput.trim()}
+              aria-label="新增分類"
+            >
+              <Plus size={18} strokeWidth={2.75} />
+            </button>
           </div>
         </div>
 
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end' }}>
-            <div style={{ flex: 1 }}>
-              <Input
-                label="食材"
-                value={ingredientInput}
-                onChange={(e) => setIngredientInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addIngredient())}
-                placeholder="例如:番茄,按 Enter 新增"
-                suggestions={ingredientOptions.filter((i) => !ingredients.includes(i))}
-                onSuggestionSelect={addIngredientValue}
-              />
-            </div>
-            <Button type="button" variant="secondary" onClick={addIngredient}>新增</Button>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel}>餐點類型</label>
+          <div className={styles.chipWrap}>
+            {COURSE_ORDER.map((course) => (
+              <button
+                key={course}
+                type="button"
+                className={[styles.selectChip, courseTypes.includes(course) ? styles.selectChipActive : '']
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => toggleCourseType(course)}
+              >
+                {COURSE_LABELS[course]}
+              </button>
+            ))}
           </div>
+        </div>
 
+        <div className={styles.field}>
+          <label className={styles.fieldLabel}>食材</label>
           {ingredients.length > 0 && (
-            <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+            <div className={styles.chipWrap}>
               {ingredients.map((ing, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <IngredientTag name={ing} colorKey={ingredientCategoryMap[ing]?.color} />
+                <span key={ing} className={styles.ingredientChip}>
+                  {ing}
                   <button
                     type="button"
+                    className={styles.ingredientRemoveBtn}
                     onClick={() => removeIngredient(i)}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', font: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}
+                    aria-label={`移除${ing}`}
                   >
-                    ×
+                    <X size={14} strokeWidth={2.75} />
                   </button>
-                </div>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className={styles.addRow}>
+            <Input
+              value={ingredientInput}
+              onChange={(e) => setIngredientInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addIngredient())}
+              placeholder="例如:番茄"
+              suggestions={ingredientOptions.filter((i) => !ingredients.includes(i))}
+              onSuggestionSelect={addIngredientValue}
+              style={{ minHeight: 44 }}
+            />
+            <button
+              type="button"
+              className={styles.roundAddBtn}
+              onClick={addIngredient}
+              disabled={!ingredientInput.trim()}
+              aria-label="新增食材"
+            >
+              <Plus size={18} strokeWidth={2.75} />
+            </button>
+          </div>
+
+          {ingredientSuggestions.length > 0 && (
+            <div className={[styles.chipWrap, styles.field].join(' ')} style={{ marginTop: 10, marginBottom: 0 }}>
+              {ingredientSuggestions.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={styles.ingredientSuggestChip}
+                  onClick={() => addIngredientValue(n)}
+                >
+                  ＋ {n}
+                </button>
               ))}
             </div>
           )}
 
           {pendingIngredient && (
-            <Card style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', borderStyle: 'dashed' }}>
-              <p style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', margin: '0 0 var(--space-2)' }}>
-                「{pendingIngredient}」是新食材,幫它選個分類(之後可在食材管理頁調整):
+            <div className={styles.pendingCard}>
+              <p className={styles.pendingHint}>
+                「{pendingIngredient}」是新食材,幫它選個分類(之後可在「冰箱與食材」頁調整):
               </p>
-              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-2)', alignItems: 'center' }}>
-                {ingredientCategories.map((c) => {
-                  const color = getColor(c.color);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => assignCategory(c.id)}
-                      style={{ background: color.bg, color: color.text, border: 'none', borderRadius: 'var(--radius-control)', padding: '4px 10px', cursor: 'pointer', font: 'var(--font-caption)' }}
-                    >
-                      {c.name}
-                    </button>
-                  );
-                })}
+              <div className={styles.pendingCatRow}>
+                {ingredientCategories.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={styles.pendingCatBtn}
+                    style={{ background: 'var(--surface-3)', color: 'var(--primary-dark)' }}
+                    onClick={() => assignCategory(c.id)}
+                  >
+                    {c.name}
+                  </button>
+                ))}
                 <button
                   type="button"
+                  className={styles.pendingLinkBtn}
                   onClick={() => setShowNewCategoryInput(!showNewCategoryInput)}
-                  style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}
                 >
-                  + 新分類
+                  ＋ 新分類
                 </button>
-                <button
-                  type="button"
-                  onClick={() => assignCategory(null)}
-                  style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)', background: 'none', border: 'none', cursor: 'pointer' }}
-                >
+                <button type="button" className={styles.pendingLinkBtn} onClick={() => assignCategory(null)}>
                   先跳過
                 </button>
               </div>
               {showNewCategoryInput && (
-                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input
-                    type="text"
+                <div className={styles.newCatRow}>
+                  <Input
                     value={newCategoryName}
                     onChange={(e) => setNewCategoryName(e.target.value)}
-                    placeholder="新分類名稱,例如:蔬菜"
-                    style={{ padding: 6, borderRadius: 'var(--radius-control)', border: '1px solid var(--color-border)', font: 'var(--font-body)' }}
+                    placeholder="新分類名稱"
+                    className={styles.newCatInput}
+                    style={{ minHeight: 38 }}
                   />
                   {TAG_COLOR_OPTIONS.map((c) => (
-                    <button
+                    <ColorDot
                       key={c.key}
-                      type="button"
+                      color={c}
+                      selected={newCategoryColor === c.key}
                       onClick={() => setNewCategoryColor(c.key)}
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        background: c.bg,
-                        border: newCategoryColor === c.key ? '2px solid var(--color-text)' : '1px solid var(--color-border)',
-                        cursor: 'pointer',
-                      }}
-                      title={c.label}
                     />
                   ))}
-                  <Button type="button" size="sm" onClick={handleCreateCategory}>建立並套用</Button>
+                  <Button type="button" size="sm" onClick={handleCreateCategory}>
+                    建立並套用
+                  </Button>
                 </div>
               )}
-            </Card>
+            </div>
           )}
         </div>
 
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <Checkbox label="可預先製作" checked={prepAhead} onChange={(e) => setPrepAhead(e.target.checked)} />
+        <div className={styles.field}>
+          <label className={styles.fieldLabel}>標籤</label>
+          {tagOptions.length > 0 && (
+            <div className={styles.chipWrap}>
+              {tagOptions.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={[styles.tagChip, tags.includes(t) ? styles.tagChipActive : ''].filter(Boolean).join(' ')}
+                  onClick={() => toggleTag(t)}
+                >
+                  #{t}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className={styles.addRow}>
+            <Input
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+              placeholder="例如:快速、宴客"
+              style={{ minHeight: 44 }}
+            />
+            <button
+              type="button"
+              className={styles.roundAddBtn}
+              onClick={addTag}
+              disabled={!tagInput.trim()}
+              aria-label="新增標籤"
+            >
+              <Plus size={18} strokeWidth={2.75} />
+            </button>
+          </div>
         </div>
 
-        <div style={{ marginBottom: 'var(--space-5)' }}>
+        <div className={styles.field}>
+          <div className={styles.toggleCard}>
+            <div>
+              <div className={styles.toggleTitle}>可先做</div>
+              <div className={styles.toggleDesc}>前一天做好也不影響風味</div>
+            </div>
+            <Toggle checked={prepAhead} onChange={setPrepAhead} label="可先做" />
+          </div>
+        </div>
+
+        <div className={styles.field}>
           <Input
-            label="來源"
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            placeholder="選填,例如:阿嬤的做法、某本食譜書"
-            hint="自由填寫,不一定要是網址;食譜的原始連結請填在下面「有詳細食譜」展開後的欄位"
+            placeholder="例如:阿嬤、某個食譜網站"
+            className={styles.sourceInput}
+            style={{ minHeight: 46 }}
           />
         </div>
 
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <Textarea label="備註" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <div className={styles.field}>
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className={styles.notesTextarea}
+            style={{ minHeight: 88, padding: '14px 18px', font: '400 14px/1.7 var(--font-family)' }}
+          />
         </div>
 
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <Checkbox label="這道菜有詳細食譜" checked={hasRecipe} onChange={(e) => setHasRecipe(e.target.checked)} />
+        <div className={styles.field}>
+          <div className={styles.toggleCard}>
+            <div>
+              <div className={styles.toggleTitle}>有食譜</div>
+              <div className={styles.toggleDesc}>打開才需要填封面、連結與內容</div>
+            </div>
+            <Toggle checked={hasRecipe} onChange={setHasRecipe} label="有食譜" />
+          </div>
         </div>
 
         {hasRecipe && (
-          <Card style={{ marginBottom: 'var(--space-5)', padding: 'var(--space-4)' }}>
-            <label style={{ font: 'var(--font-label)', color: 'var(--color-text)', display: 'block', marginBottom: 'var(--space-3)' }}>
-              食譜內容
-            </label>
-            <div style={{ marginBottom: 'var(--space-4)' }}>
-              <Input
-                label="食譜原始連結(選填)"
-                value={recipeSourceUrl}
-                onChange={(e) => setRecipeSourceUrl(e.target.value)}
-                placeholder="例如:IG 貼文或食譜網站連結"
-                hint="有填的話,詳細頁的食譜內容區塊會出現「查看原始食譜」按鈕"
-              />
-            </div>
+          <div className={styles.recipeCard}>
+            <button
+              type="button"
+              className={styles.coverUpload}
+              onClick={() => coverInputRef.current?.click()}
+            >
+              {coverPhotoPath ? (
+                <>
+                  <img src={coverPhotoPath} alt="" className={styles.coverPreview} />
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    className={styles.coverRemoveBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCoverPhotoPath('');
+                    }}
+                    aria-label="移除封面照片"
+                  >
+                    <X size={14} strokeWidth={3} />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Camera size={16} strokeWidth={2.5} style={{ marginRight: 6 }} />
+                  ＋ 封面照片
+                </>
+              )}
+            </button>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              className={styles.hiddenFileInput}
+              onChange={handleCoverFileChange}
+            />
+
+            <Input
+              value={recipeSourceUrl}
+              onChange={(e) => setRecipeSourceUrl(e.target.value)}
+              placeholder="食譜原始連結(選填)"
+              className={styles.urlInput}
+              style={{ minHeight: 46 }}
+            />
+
             {content.map((block, i) => (
-              <div key={i} style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', alignItems: 'flex-start' }}>
-                <span style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)', minWidth: 40, paddingTop: 10 }}>
-                  {block.type === 'text' ? '文字' : '圖片'}
-                </span>
-                <div style={{ flex: 1 }}>
+              <div key={i} className={styles.block}>
+                <span className={styles.blockIndex}>{i + 1}</span>
+                <div className={styles.blockBody}>
                   {block.type === 'text' ? (
-                    <Textarea value={block.text} onChange={(e) => updateBlock(i, e.target.value)} />
-                  ) : (
-                    <Input
-                      value={block.path}
-                      onChange={(e) => updateBlock(i, e.target.value)}
-                      placeholder="本地圖片選取功能尚未完成,暫用文字路徑代替"
+                    <Textarea
+                      value={block.text || ''}
+                      onChange={(e) => updateBlockText(i, e.target.value)}
+                      placeholder="這一段的做法"
+                      className={styles.blockTextarea}
+                      style={{ minHeight: 70 }}
                     />
+                  ) : (
+                    <button type="button" className={styles.blockImageBox} onClick={() => openBlockFilePicker(i)}>
+                      {block.path ? (
+                        <img src={block.path} alt="" className={styles.blockImagePreview} />
+                      ) : (
+                        <>
+                          <ImageIcon size={16} strokeWidth={2.5} style={{ marginRight: 6 }} />
+                          點擊選擇圖片
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
-                <IconButton icon="🗑" label="刪除這個區塊" danger onClick={() => removeBlock(i)} />
+                <button
+                  type="button"
+                  className={styles.blockRemoveBtn}
+                  onClick={() => removeBlock(i)}
+                  aria-label="移除這個區塊"
+                >
+                  <X size={16} strokeWidth={2.5} />
+                </button>
               </div>
             ))}
-            {recipeError && (
-              <p style={{ color: 'var(--color-danger)', font: 'var(--font-caption)', marginBottom: 'var(--space-2)' }}>{recipeError}</p>
-            )}
-            <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <Button type="button" variant="secondary" size="sm" onClick={addTextBlock}>+ 新增文字段落</Button>
-              <Button type="button" variant="secondary" size="sm" onClick={addImageBlock}>+ 新增圖片(暫用路徑)</Button>
+            <input
+              ref={blockImageInputRef}
+              type="file"
+              accept="image/*"
+              className={styles.hiddenFileInput}
+              onChange={handleBlockFileChange}
+            />
+
+            <div className={styles.recipeBtnRow}>
+              <button type="button" className={styles.recipeDashedBtn} onClick={addTextBlock}>
+                ＋ 文字段
+              </button>
+              <button type="button" className={styles.recipeDashedBtn} onClick={addImageBlock}>
+                ＋ 照片
+              </button>
             </div>
-          </Card>
+          </div>
         )}
-
-        {nameError && (
-          <p style={{ color: 'var(--color-danger)', font: 'var(--font-caption)', marginBottom: 'var(--space-3)' }}>{nameError}</p>
-        )}
-
-        <Button type="submit" loading={saving} fullWidth>
-          {saving ? '儲存中...' : isEditMode ? '更新菜色' : '儲存菜色'}
-        </Button>
       </form>
 
       <ConfirmDialog

@@ -1,0 +1,74 @@
+.base {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  line-height: 1;
+  border: none;
+}
+
+.chip {
+  font: var(--font-chip);
+  padding: 4px 8px;
+}
+
+.badge {
+  font: var(--font-badge);
+  padding: 4px 7px;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.category {
+  background: var(--surface-3);
+  color: var(--primary-dark);
+}
+
+.course {
+  background: var(--primary-tint);
+  color: var(--primary-ink);
+}
+
+.tag {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.recipe {
+  background: var(--primary-tint);
+  color: var(--primary-dark);
+}
+
+.prepAhead {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.inStock {
+  background: var(--primary-tint);
+  color: var(--primary-dark);
+}
+
+.staple {
+  background: var(--primary-tint);
+  color: var(--primary-dark);
+}
+
+.needBuy {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.selected {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.outline {
+  background: transparent;
+  color: var(--text-4);
+  border: 1.5px solid var(--border);
+}

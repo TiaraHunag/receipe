@@ -1,102 +1,51 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  getAllDishes,
-  getAllIngredients,
-  getAllTags,
-  addDishToMeal,
-  Dish,
-  MealType,
-  CourseType,
-  COURSE_ORDER,
-  COURSE_LABELS,
-} from '../db';
-import {
-  Card,
-  Input,
-  Button,
-  Fab,
-  IconButton,
-  EmptyState,
-  Tag,
-  Skeleton,
-  SegmentedControl,
-  Modal,
-  useToast,
-} from '../components';
-import type { TagColorKey } from '../components';
-import { COURSE_TAG_COLOR } from '../courseColors';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Clock } from 'lucide-react';
+import { getAllDishes, Dish, COURSE_LABELS, COURSE_ORDER } from '../db';
+import { Chip, EmptyState, SegmentedControl, Skeleton, useAddToMenu } from '../components';
+import styles from './DishListPage.module.css';
 
-type GroupMode = 'course' | 'category';
-type QuickAddStep = 'date' | 'meal' | 'course';
+type GroupMode = 'category' | 'course';
 
+const ALL_TAGS_KEY = '__all__';
 const UNCATEGORIZED_LABEL = '未分類';
-const QUICK_ADD_DAY_COUNT = 7;
 
-const MEAL_LABELS: Record<MealType, string> = {
-  breakfast: '早餐',
-  lunch: '午餐',
-  dinner: '晚餐',
-};
-
-const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
-
-function formatDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function addDays(d: Date, days: number): Date {
-  const copy = new Date(d);
-  copy.setDate(copy.getDate() + days);
-  return copy;
-}
-
-/** 自訂類型(自由文字)沒有固定色盤,用簡單雜湊固定映射到 9 色其中幾色,讓同一個類型名稱每次顏色都一樣 */
-const CATEGORY_COLOR_POOL: TagColorKey[] = ['brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
-function colorForCategory(name: string): TagColorKey {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return CATEGORY_COLOR_POOL[hash % CATEGORY_COLOR_POOL.length];
-}
-
-interface Group {
+interface DishGroup {
   key: string;
   label: string;
-  color: TagColorKey;
   dishes: Dish[];
 }
 
-/** 首次載入骨架屏:貼近「餐點分類」分組 + 橫向卡片列表的外型,取代原本的轉圈圈 */
+/** 首次載入骨架屏:貼近新版單欄列表的外型(搜尋框、分段切換、幾個列高的區塊) */
 function DishListSkeleton() {
   return (
-    <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96 }}>
-      <div style={{ marginBottom: 'var(--space-2)' }}>
-        <Skeleton height={40} />
+    <div className={styles.page}>
+      <div className={styles.headerRow}>
+        <div>
+          <Skeleton width={40} height={13} radius="var(--radius-pill)" />
+          <div style={{ marginTop: 6 }}>
+            <Skeleton width={80} height={26} />
+          </div>
+        </div>
+        <Skeleton width={88} height={44} radius="var(--radius-pill)" />
       </div>
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <Skeleton height={44} />
+      <div style={{ marginBottom: 10 }}>
+        <Skeleton height={44} radius="var(--radius-pill)" />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <Skeleton height={38} radius="var(--radius-pill)" />
       </div>
       {[0, 1].map((groupIdx) => (
-        <div key={groupIdx} style={{ marginBottom: 'var(--space-5)' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'baseline',
-              justifyContent: 'space-between',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            <Skeleton width={72} height={17} />
-            <Skeleton width={32} height={13} />
-          </div>
-          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-            {[0, 1, 2].map((cardIdx) => (
-              <Skeleton key={cardIdx} width={136} height={108} radius="var(--radius-card)" />
-            ))}
-          </div>
+        <div key={groupIdx} style={{ marginBottom: 20 }}>
+          <Skeleton width={64} height={13} />
+          {[0, 1, 2].map((rowIdx) => (
+            <div key={rowIdx} style={{ padding: '12px 0', borderBottom: '1px solid var(--line)' }}>
+              <Skeleton width="60%" height={18} />
+              <div style={{ marginTop: 6 }}>
+                <Skeleton width="40%" height={12} />
+              </div>
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -104,489 +53,218 @@ function DishListSkeleton() {
 }
 
 function DishListPage() {
-  const { showToast } = useToast();
+  const navigate = useNavigate();
+  const { openAddToMenu } = useAddToMenu();
 
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const [ingredientOptions, setIngredientOptions] = useState<string[]>([]);
-  const [tagOptions, setTagOptions] = useState<string[]>([]);
+  const [query, setQuery] = useState('');
   const [groupMode, setGroupMode] = useState<GroupMode>('course');
-  const [searchIngredient, setSearchIngredient] = useState('');
-
-  const [quickAddDish, setQuickAddDish] = useState<Dish | null>(null);
-  const [quickAddStep, setQuickAddStep] = useState<QuickAddStep>('date');
-  const [quickAddDate, setQuickAddDate] = useState<Date | null>(null);
-  const [quickAddMeal, setQuickAddMeal] = useState<MealType | null>(null);
-  const [quickAdding, setQuickAdding] = useState(false);
-
-  const loadDishes = async () => {
-    try {
-      const results = await getAllDishes();
-      setDishes(results);
-      const ings = await getAllIngredients();
-      setIngredientOptions(ings);
-      const tags = await getAllTags();
-      setTagOptions(tags);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [tagFilter, setTagFilter] = useState<string>(ALL_TAGS_KEY);
 
   useEffect(() => {
-    loadDishes();
+    const load = async () => {
+      const allDishes = await getAllDishes();
+      setDishes(allDishes);
+      setLoading(false);
+    };
+    load();
   }, []);
 
-  const searchTerm = searchIngredient.trim().toLowerCase();
-  const isSearching = searchTerm.length > 0;
-
-  const searchResults = useMemo(() => {
-    if (!isSearching) return [];
-    return dishes.filter(
-      (dish) =>
-        dish.ingredients.some((ing) => ing.toLowerCase().includes(searchTerm)) ||
-        (dish.tags || []).some((tag) => tag.toLowerCase().includes(searchTerm))
-    );
-  }, [dishes, searchTerm, isSearching]);
-
-  /** 搜尋自動建議:合併食材與標籤,去重 */
-  const searchSuggestions = useMemo(
-    () => Array.from(new Set([...ingredientOptions, ...tagOptions])).sort(),
-    [ingredientOptions, tagOptions]
+  // getAllCategories()/getAllTags() 內部其實也只是重新 getAllDishes() 再算一次,
+  // 這裡已經有完整的 dishes 了,直接在前端算標籤選項,省一次資料庫查詢。
+  const tagOptions = useMemo(
+    () => Array.from(new Set(dishes.flatMap((d) => d.tags))).sort((a, b) => a.localeCompare(b, 'zh-Hant')),
+    [dishes]
   );
 
-  const groups: Group[] = useMemo(() => {
-    if (isSearching) return [];
+  const searchTerm = query.trim().toLowerCase();
 
+  const filteredDishes = useMemo(() => {
+    return dishes.filter((d) => {
+      if (searchTerm) {
+        const hit =
+          d.name.toLowerCase().includes(searchTerm) ||
+          d.ingredients.some((ing) => ing.toLowerCase().includes(searchTerm)) ||
+          d.tags.some((t) => t.toLowerCase().includes(searchTerm));
+        if (!hit) return false;
+      }
+      if (tagFilter !== ALL_TAGS_KEY && !d.tags.includes(tagFilter)) return false;
+      return true;
+    });
+  }, [dishes, searchTerm, tagFilter]);
+
+  const groups: DishGroup[] = useMemo(() => {
     if (groupMode === 'course') {
-      const courseGroups: Group[] = COURSE_ORDER.map((course) => ({
-        key: course,
-        label: COURSE_LABELS[course],
-        color: COURSE_TAG_COLOR[course],
-        dishes: dishes.filter((d) => d.courseTypes.includes(course)),
-      }));
-      const uncategorized = dishes.filter((d) => !d.courseTypes || d.courseTypes.length === 0);
-      return [
-        ...courseGroups.filter((g) => g.dishes.length > 0),
-        ...(uncategorized.length > 0
-          ? [{ key: '__none__', label: UNCATEGORIZED_LABEL, color: 'grey' as TagColorKey, dishes: uncategorized }]
-          : []),
-      ];
+      const courseGroups: DishGroup[] = COURSE_ORDER.map((c) => ({
+        key: c,
+        label: COURSE_LABELS[c],
+        dishes: filteredDishes.filter((d) => d.courseTypes.includes(c)),
+      })).filter((g) => g.dishes.length > 0);
+      const uncategorized = filteredDishes.filter((d) => !d.courseTypes || d.courseTypes.length === 0);
+      return uncategorized.length > 0
+        ? [...courseGroups, { key: '__none__', label: UNCATEGORIZED_LABEL, dishes: uncategorized }]
+        : courseGroups;
     }
 
-    const categoryNames = Array.from(new Set(dishes.flatMap((d) => d.category))).sort();
-    const categoryGroups: Group[] = categoryNames.map((name) => ({
-      key: name,
-      label: name,
-      color: colorForCategory(name),
-      dishes: dishes.filter((d) => d.category.includes(name)),
-    }));
-    const uncategorized = dishes.filter((d) => !d.category || d.category.length === 0);
-    return [
-      ...categoryGroups,
-      ...(uncategorized.length > 0
-        ? [{ key: '__none__', label: UNCATEGORIZED_LABEL, color: 'grey' as TagColorKey, dishes: uncategorized }]
-        : []),
-    ];
-  }, [dishes, groupMode, isSearching]);
+    const categoryNames = Array.from(new Set(dishes.flatMap((d) => d.category))).sort((a, b) =>
+      a.localeCompare(b, 'zh-Hant')
+    );
+    const categoryGroups: DishGroup[] = categoryNames
+      .map((name) => ({
+        key: name,
+        label: name,
+        dishes: filteredDishes.filter((d) => d.category.includes(name)),
+      }))
+      .filter((g) => g.dishes.length > 0);
+    const uncategorized = filteredDishes.filter((d) => !d.category || d.category.length === 0);
+    return uncategorized.length > 0
+      ? [...categoryGroups, { key: '__none__', label: UNCATEGORIZED_LABEL, dishes: uncategorized }]
+      : categoryGroups;
+  }, [filteredDishes, dishes, groupMode]);
 
-  /** 卡片上的次要標籤:跟目前分組依據「相反」的那個欄位,補充資訊用,避免跟區塊標題重複 */
-  const secondaryTagsOf = (dish: Dish): string[] =>
-    groupMode === 'course' ? dish.category : dish.courseTypes.map((c) => COURSE_LABELS[c]);
+  const hasAnyDish = dishes.length > 0;
+  const noResult = filteredDishes.length === 0;
 
-  const quickAddDayOptions = useMemo(() => {
-    const today = new Date();
-    return Array.from({ length: QUICK_ADD_DAY_COUNT }, (_, i) => addDays(today, i));
-  }, []);
-
-  const openQuickAdd = (dish: Dish) => {
-    setQuickAddDish(dish);
-    setQuickAddDate(null);
-    setQuickAddMeal(null);
-    setQuickAddStep('date');
+  const handlePlan = (dish: Dish) => {
+    openAddToMenu({
+      course: dish.courseTypes[0],
+      query: dish.name,
+    });
   };
-  const closeQuickAdd = () => {
-    setQuickAddDish(null);
-    setQuickAddDate(null);
-    setQuickAddMeal(null);
-    setQuickAddStep('date');
-  };
-
-  const chooseQuickAddDate = (date: Date) => {
-    setQuickAddDate(date);
-    setQuickAddStep('meal');
-  };
-
-  const confirmQuickAdd = async (course: CourseType) => {
-    if (!quickAddDish || !quickAddDate || !quickAddMeal || quickAdding) return;
-    setQuickAdding(true);
-    try {
-      const dateStr = formatDate(quickAddDate);
-      await addDishToMeal(dateStr, quickAddMeal, course, quickAddDish.id);
-      const isToday = dateStr === formatDate(new Date());
-      const dayText = isToday ? '今天' : `${quickAddDate.getMonth() + 1}/${quickAddDate.getDate()}`;
-      showToast(`已加入${dayText}${MEAL_LABELS[quickAddMeal]}的${COURSE_LABELS[course]}`, 'success');
-      closeQuickAdd();
-    } catch (err) {
-      showToast('加入失敗,請再試一次', 'error');
-    } finally {
-      setQuickAdding(false);
-    }
-  };
-
-  const QuickAddButton = ({ dish }: { dish: Dish }) => (
-    <IconButton
-      icon="＋"
-      label={`加入「${dish.name}」到菜單`}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openQuickAdd(dish);
-      }}
-      style={{ position: 'absolute', top: 2, right: 2 }}
-    />
-  );
 
   if (loading) {
     return <DishListSkeleton />;
   }
 
-  const todayStr = formatDate(new Date());
-  const quickAddDateLabel = quickAddDate
-    ? `${quickAddDate.getMonth() + 1}/${quickAddDate.getDate()}(週${WEEKDAY_LABELS[quickAddDate.getDay()]})`
-    : '';
-
-  const quickAddTitle = !quickAddDish
-    ? undefined
-    : quickAddStep === 'date'
-    ? `「${quickAddDish.name}」加到菜單——選擇日期`
-    : quickAddStep === 'meal'
-    ? `「${quickAddDish.name}」加到${quickAddDateLabel}——選擇餐別`
-    : `「${quickAddDish.name}」加到${quickAddDateLabel}${MEAL_LABELS[quickAddMeal!]}——選擇分類`;
-
   return (
-    <div
-      style={{
-        padding: 'var(--space-4)',
-        maxWidth: 480,
-        margin: '0 auto',
-        paddingBottom: 96,
-        position: 'relative',
-        minHeight: '100vh',
-      }}
-    >
-
-      <div style={{ marginBottom: 'var(--space-2)' }}>
-        <SegmentedControl
-          options={[
-            { value: 'course', label: '餐點分類' },
-            { value: 'category', label: '餐點類型' },
-          ]}
-          value={groupMode}
-          onChange={(v) => setGroupMode(v as GroupMode)}
-        />
+    <div className={styles.page}>
+      <div className={styles.headerRow}>
+        <div>
+          <div className={styles.countLabel}>{dishes.length} 道</div>
+          <h1 className={styles.pageTitle}>食譜</h1>
+        </div>
+        <Link to="/new" className={styles.addBtn}>
+          <Plus size={17} strokeWidth={2.75} />
+          新增
+        </Link>
       </div>
 
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <Input
-          aria-label="搜尋食材或標籤"
-          value={searchIngredient}
-          onChange={(e) => setSearchIngredient(e.target.value)}
-          placeholder="搜尋食材或標籤,例如:雞肉"
-          suggestions={searchSuggestions}
-        />
-      </div>
+      <input
+        className={styles.searchInput}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="搜尋菜名、食材或標籤"
+      />
 
-      {error && (
-        <p style={{ color: 'var(--color-danger)', font: 'var(--font-caption)', marginBottom: 'var(--space-3)' }}>
-          {error}
-        </p>
-      )}
+      <SegmentedControl
+        className={styles.groupModeSwitch}
+        options={[
+          { value: 'category', label: '餐點分類' },
+          { value: 'course', label: '餐點類型' },
+        ]}
+        value={groupMode}
+        onChange={(v) => setGroupMode(v as GroupMode)}
+      />
 
-      {dishes.length === 0 ? (
-        <EmptyState
-          icon="🍳"
-          title="目前沒有資料"
-          description="按右下角的 + 開始新增第一道菜色"
-        />
-      ) : isSearching ? (
-        searchResults.length === 0 ? (
-          <EmptyState icon="🔍" title={`沒有食譜含有「${searchIngredient.trim()}」`} />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            {searchResults.map((dish) => (
-              <div key={dish.id} style={{ position: 'relative' }}>
-                <Link to={`/dish/${dish.id}`} style={{ textDecoration: 'none' }}>
-                  <Card interactive style={{ padding: 'var(--space-4)' }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--space-2)',
-                        marginBottom: 'var(--space-2)',
-                        paddingRight: 32,
-                      }}
-                    >
-                      <strong style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)' }}>
-                        {dish.name}
-                      </strong>
-                      {dish.hasRecipe && (
-                        <span style={{ font: 'var(--font-caption)', color: 'var(--color-primary)' }}>有食譜</span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
-                      {dish.category.map((c) => (
-                        <Tag key={c} color={colorForCategory(c)}>
-                          {c}
-                        </Tag>
-                      ))}
-                      {dish.courseTypes.map((c) => (
-                        <Tag key={c} color={COURSE_TAG_COLOR[c]}>
-                          {COURSE_LABELS[c]}
-                        </Tag>
-                      ))}
-                      {(dish.tags || []).map((t) => (
-                        <Tag key={t} color="grey">
-                          #{t}
-                        </Tag>
-                      ))}
-                    </div>
-                  </Card>
-                </Link>
-                <QuickAddButton dish={dish} />
-              </div>
-            ))}
-          </div>
-        )
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-          {groups.map((group) => (
-            <div key={group.key}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  justifyContent: 'space-between',
-                  marginBottom: 'var(--space-2)',
-                }}
-              >
-                <span style={{ font: 'var(--font-subtitle)', color: 'var(--color-text)' }}>{group.label}</span>
-                <span style={{ font: 'var(--font-caption)', color: 'var(--color-text-placeholder)' }}>
-                  {group.dishes.length} 道
-                </span>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 'var(--space-3)',
-                  overflowX: 'auto',
-                  paddingBottom: 4,
-                  WebkitOverflowScrolling: 'touch',
-                }}
-              >
-                {group.dishes.map((dish) => {
-                  const secondary = secondaryTagsOf(dish);
-                  return (
-                    <div key={dish.id} style={{ position: 'relative', flex: '0 0 auto' }}>
-                      <Link to={`/dish/${dish.id}`} style={{ textDecoration: 'none' }}>
-                        <Card
-                          interactive
-                          style={{
-                            width: 136,
-                            minHeight: 108,
-                            padding: 'var(--space-3)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between',
-                          }}
-                        >
-                          <div>
-                            <div
-                              style={{
-                                font: 'var(--font-label)',
-                                color: 'var(--color-text)',
-                                paddingRight: 24,
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                              }}
-                            >
-                              {dish.name}
-                            </div>
-                            {secondary.length > 0 && (
-                              <div
-                                style={{
-                                  font: 'var(--font-caption)',
-                                  color: 'var(--color-text-secondary)',
-                                  marginTop: 4,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {secondary.join('、')}
-                              </div>
-                            )}
-                          </div>
-                          {dish.hasRecipe && (
-                            <span style={{ font: 'var(--font-caption)', color: 'var(--color-primary)' }}>
-                              有食譜
-                            </span>
-                          )}
-                        </Card>
-                      </Link>
-                      <QuickAddButton dish={dish} />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+      {tagOptions.length > 0 && (
+        <div className={styles.tagRow}>
+          <button
+            type="button"
+            className={[styles.tagFilterChip, tagFilter === ALL_TAGS_KEY ? styles.tagFilterChipActive : '']
+              .filter(Boolean)
+              .join(' ')}
+            onClick={() => setTagFilter(ALL_TAGS_KEY)}
+          >
+            全部標籤
+          </button>
+          {tagOptions.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              className={[styles.tagFilterChip, tagFilter === tag ? styles.tagFilterChipActive : '']
+                .filter(Boolean)
+                .join(' ')}
+              onClick={() => setTagFilter(tag)}
+            >
+              #{tag}
+            </button>
           ))}
         </div>
       )}
 
-      <Modal open={!!quickAddDish} onClose={closeQuickAdd} title={quickAddTitle}>
-        {quickAddDish && quickAddStep === 'date' && (
-          <div style={{ display: 'flex', gap: 'var(--space-2)', overflowX: 'auto', paddingBottom: 4 }}>
-            {quickAddDayOptions.map((date) => {
-              const dateStr = formatDate(date);
-              const isToday = dateStr === todayStr;
-              return (
-                <button
-                  key={dateStr}
-                  type="button"
-                  onClick={() => chooseQuickAddDate(date)}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 4,
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '2px 2px 4px',
-                    flex: '0 0 auto',
-                  }}
-                >
-                  <span style={{ font: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}>
-                    週{WEEKDAY_LABELS[date.getDay()]}
-                  </span>
-                  <span
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 'var(--radius-pill)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      font: 'var(--font-label)',
-                      background: isToday ? 'var(--color-primary)' : 'var(--color-surface-sunken)',
-                      color: isToday ? 'var(--color-text-inverse)' : 'var(--color-text)',
-                    }}
-                  >
-                    {date.getDate()}
-                  </span>
+      {noResult ? (
+        <EmptyState
+          icon={<div className={styles.emptyCircle} />}
+          title={hasAnyDish ? '沒有符合的菜' : '還沒有任何食譜'}
+          description={hasAnyDish ? '換個關鍵字或清掉標籤篩選。' : '新增你的第一道菜,開始累積食譜庫。'}
+          action={
+            <button type="button" className={styles.addBtn} onClick={() => navigate('/new')}>
+              <Plus size={17} strokeWidth={2.75} />
+              新增一道菜
+            </button>
+          }
+        />
+      ) : (
+        groups.map((group) => (
+          <div key={group.key} className={styles.group}>
+            <div className={styles.groupHeader}>
+              <span className={styles.groupLabel}>{group.label}</span>
+              <span className={styles.groupCount}>{group.dishes.length} 道</span>
+              <span className={styles.groupLine} />
+            </div>
+
+            {group.dishes.map((dish) => (
+              <div key={dish.id} className={styles.row}>
+                <Link to={`/dish/${dish.id}`} className={styles.rowMain}>
+                  <div className={styles.rowTitleLine}>
+                    <span className={styles.dishName}>{dish.name}</span>
+                    {dish.hasRecipe && (
+                      <Chip tone="recipe" variant="badge">
+                        食譜
+                      </Chip>
+                    )}
+                    {dish.prepAhead && (
+                      <Chip tone="prepAhead" variant="badge" icon={<Clock size={10} strokeWidth={3} />}>
+                        可先做
+                      </Chip>
+                    )}
+                  </div>
+
+                  {dish.ingredients.length > 0 && (
+                    <div className={styles.ingredientLine}>{dish.ingredients.join('、')}</div>
+                  )}
+
+                  {(dish.category.length > 0 || dish.courseTypes.length > 0 || dish.tags.length > 0) && (
+                    <div className={styles.chipRow}>
+                      {dish.category.map((c) => (
+                        <Chip key={`c-${c}`} tone="category">
+                          {c}
+                        </Chip>
+                      ))}
+                      {dish.courseTypes.map((c) => (
+                        <Chip key={`t-${c}`} tone="course">
+                          {COURSE_LABELS[c]}
+                        </Chip>
+                      ))}
+                      {dish.tags.map((tag) => (
+                        <Chip key={`g-${tag}`} tone="tag">
+                          #{tag}
+                        </Chip>
+                      ))}
+                    </div>
+                  )}
+                </Link>
+
+                <button type="button" className={styles.planBtn} onClick={() => handlePlan(dish)}>
+                  排菜單
                 </button>
-              );
-            })}
+              </div>
+            ))}
           </div>
-        )}
-
-        {quickAddDish && quickAddStep === 'meal' && (
-          <>
-            <button
-              type="button"
-              onClick={() => setQuickAddStep('date')}
-              style={{
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                font: 'var(--font-caption)',
-                color: 'var(--color-text-secondary)',
-                padding: 0,
-                marginBottom: 'var(--space-3)',
-              }}
-            >
-              ‹ 換一天
-            </button>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-              {(['breakfast', 'lunch', 'dinner'] as const).map((meal) => (
-                <Button
-                  key={meal}
-                  variant="secondary"
-                  onClick={() => {
-                    setQuickAddMeal(meal);
-                    setQuickAddStep('course');
-                  }}
-                >
-                  {MEAL_LABELS[meal]}
-                </Button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {quickAddDish && quickAddStep === 'course' && quickAddMeal && (
-          <>
-            <button
-              type="button"
-              onClick={() => setQuickAddStep('meal')}
-              style={{
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                font: 'var(--font-caption)',
-                color: 'var(--color-text-secondary)',
-                padding: 0,
-                marginBottom: 'var(--space-3)',
-              }}
-            >
-              ‹ 換一個分類
-            </button>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-              {COURSE_ORDER.map((course) => (
-                <Button
-                  key={course}
-                  variant="secondary"
-                  size="sm"
-                  disabled={quickAdding}
-                  onClick={() => confirmQuickAdd(course)}
-                >
-                  {COURSE_LABELS[course]}
-                </Button>
-              ))}
-            </div>
-          </>
-        )}
-      </Modal>
-
-      <div
-        style={{
-          position: 'fixed',
-          right: 20,
-          bottom: 84,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-3)',
-          zIndex: 90,
-        }}
-      >
-        <Link to="/quick-add" title="貼上連結/文字快速新增" style={{ textDecoration: 'none' }}>
-          <IconButton
-            icon="🔗"
-            label="貼上連結/文字快速新增"
-            style={{ background: 'var(--color-surface)', boxShadow: 'var(--shadow-float)' }}
-          />
-        </Link>
-        <Link to="/new" style={{ textDecoration: 'none' }}>
-          <Fab label="新增菜色" />
-        </Link>
-      </div>
+        ))
+      )}
     </div>
   );
 }

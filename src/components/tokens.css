@@ -6,46 +6,181 @@
  *
  * 使用方式：在 main.tsx（或 App.tsx）最上層 import 一次即可：
  *   import './components/tokens.css'
+ *
+ * 2026-09 UI 改版說明：
+ * - 上半段是「Receipe App UI 優化」handoff README 的 Design Tokens
+ *   （鼠尾草配色），這是顏色唯一的定義來源，之後所有新畫面一律直接
+ *   使用這些變數名稱（--bg / --surface / --primary ... 等）。
+ * - 下半段保留舊版元件在用的 --color-* 別名，但值全部改成 var() 引用
+ *   上面的鼠尾草色票，讓還沒照新設計改版的頁面自動套上新色，不會因為
+ *   這次改版而變成沒有樣式。等對應頁面改版完成、不再使用舊別名後，
+ *   可以把該別名整條刪掉。
  * -----------------------------------------------------------------------
  */
 
 :root {
-  /* ---- 基礎色（溫暖、貼近廚房/食物情境，避開常見 AI 生成配色） ---- */
-  --color-bg: #faf9f6;             /* 頁面底色：溫暖米白 */
-  --color-surface: #ffffff;        /* 卡片 / 輸入框底色 */
-  --color-surface-sunken: #f2f0eb; /* 內凹區塊、Segmented 底色 */
+  /* ======================================================================
+     Design Tokens（鼠尾草配色）—— 對齊 design_handoff_receipe_ui/README.md
+     ====================================================================== */
+  --bg: #f3f1e6; /* 頁面底色 */
+  --surface: #fbfaf3; /* 卡片、輸入框、底部分頁列 */
+  --surface-2: #eceadb; /* 次級區塊（提示卡、已勾選區） */
+  --surface-3: #e7e5d5; /* 分段控制器軌道 */
 
-  --color-text: #2b2a28;           /* 主要文字：暖黑，不用純黑 */
-  --color-text-secondary: #6b6862; /* 次要文字 / caption */
-  --color-text-placeholder: #a6a29a;
-  --color-text-inverse: #ffffff;
+  --text: #20241c; /* 主文字 */
+  --text-2: #3a4133; /* 次標題 */
+  --text-3: #5f6653; /* 說明文字 */
+  --text-4: #6f7660; /* section 標籤、metadata */
+  --text-5: #8b9080; /* 已完成／停用文字 */
+  --text-6: #9aa08d; /* 佔位、空狀態 */
 
-  --color-border: #e5e2dc;
-  --color-border-strong: #d3cec4;
+  --primary: #6d7d51; /* 主色：主按鈕、已選分頁、勾選圈、進度條 */
+  --primary-dark: #4a5639; /* 主色文字（在淺底上） */
+  --primary-tint: #e4e7d5; /* 主色淺底（chip、頭像底） */
+  --primary-ink: #3f4a32; /* 主色淺底上的文字 */
+  --on-primary: #f6f5ec; /* 主色上的文字／圖示 */
 
-  --color-primary: #4a7856;        /* 鼠尾草綠：主要動作色（新增/儲存） */
-  --color-primary-hover: #3d6347;
-  --color-primary-soft: #e3ebe4;   /* primary 的淺色底，用於選中態 */
+  --accent: #c67139; /* 強調色：badge、「用完了」、標籤 */
+  --accent-tint: #f0e2d4; /* 強調色淺底 */
+  --accent-ink: #8d4f22; /* 強調色淺底上的文字 */
 
-  --color-danger: #c1503d;         /* 刪除 / 錯誤 */
-  --color-danger-hover: #a5432f;
-  --color-danger-soft: #f5e3df;
+  --line: #dedcc8; /* 分隔線、列底線 */
+  --line-2: #eae7d6; /* 卡片內列底線（更淡） */
+  --border: #cfd2bc; /* 次要按鈕外框 */
+  --border-input: #cfcfb8; /* 輸入框外框 */
+  --border-dash: #c3c7ae; /* 虛線外框（新增區塊） */
+  --circle: #a9b092; /* 未勾選圓圈外框 */
+  --track: #dcdcc9; /* 進度條軌道、開關關閉態、照片佔位 */
 
-  --color-warning: #b8812c;
-  --color-warning-soft: #f6ecd8;
+  --toast-bg: #2f3529; /* Toast 底 */
+  --toast-fg: #f3f1e6; /* Toast 文字 */
 
-  /* ---- 九色標籤色盤（食材分類 / 仿 Notion 風格，Tag 元件專用） ---- */
-  --tag-grey-bg: #eeece9;   --tag-grey-text: #6b6862;
-  --tag-brown-bg: #f1e5d8;  --tag-brown-text: #8b5e34;
-  --tag-orange-bg: #fbe4d0; --tag-orange-text: #c0651e;
-  --tag-yellow-bg: #fbefc7; --tag-yellow-text: #9c7a16;
-  --tag-green-bg: #deeae0;  --tag-green-text: #3f6b4b;
-  --tag-blue-bg: #dce7f0;   --tag-blue-text: #2e5e82;
-  --tag-purple-bg: #e8e1f0; --tag-purple-text: #6a4a96;
-  --tag-pink-bg: #f5e0e8;   --tag-pink-text: #a44c74;
-  --tag-red-bg: #f5dedc;    --tag-red-text: #b4412f;
+  /* 食材分類色盤（六色＋未分類），對應 ingredient_categories.color。
+     這是全新的色盤，跟下面「九色標籤盤」是兩套獨立系統──
+     九色盤是舊版拿來畫「菜色分類／餐點類型」雜湊配色用的，這次改版
+     食材分類的顏色改用這六色，菜色相關的 chip 改用上面的語意色
+     （primary-tint / surface-3 / accent-tint 等），不再雜湊配色。
+     實作到「冰箱與食材」畫面時才會真的接上這份色盤。 */
+  --ing-cat-meat: #b4552f; /* 肉類 */
+  --ing-cat-seafood: #4f7d8c; /* 海鮮 */
+  --ing-cat-vegetable: #6d7d51; /* 蔬菜 */
+  --ing-cat-tofu: #a8823c; /* 豆製品 */
+  --ing-cat-seasoning: #8b6f4e; /* 調味料 */
+  --ing-cat-dry: #7a6a8a; /* 乾貨 */
+  --ing-cat-none: #cfd2bc; /* 未分類 */
 
-  /* ---- 間距（4 的倍數尺度） ---- */
+  /* ---- 圓角 ---- */
+  --radius-row: 14px; /* 列、小卡 */
+  --radius-card: 16px; /* 卡片（README 允許 16–18px，個別畫面可自行覆寫到 18px） */
+  --radius-block: 20px; /* 大區塊、備註 textarea */
+  --radius-sheet: 26px; /* 底部彈出 sheet 上緣（0 補在下面兩角） */
+  --radius-detail: 22px; /* 詳情頁內容區上緣 */
+  --radius-pill: 999px; /* 按鈕、輸入框、chip、勾選圈、分頁列、Toast */
+
+  /* 舊版殘留：Button/Input/Select/Toast 已經改用 --radius-pill，
+     這個 token 目前沒有元件在用了，先留著避免有漏改的地方壞掉。 */
+  --radius-control: 12px;
+
+  /* ---- 陰影 ---- */
+  --shadow-float: 0 6px 20px rgba(32, 36, 28, 0.1); /* 分頁列、一般浮起元件 */
+  --shadow-sheet: 0 -10px 40px rgba(32, 36, 28, 0.2); /* 底部 sheet 專用 */
+  --shadow-toast: 0 10px 30px rgba(32, 36, 28, 0.25);
+
+  /* ---- 字級（系統字體；README 指定的 Caprasimo/Figtree 沒有中文字，
+     專案也還沒有引入自訂字體，故標題與內文都使用系統字，只照 README
+     的字級／字重數字調整） ---- */
+  --font-family: -apple-system, BlinkMacSystemFont, "PingFang TC",
+    "Helvetica Neue", sans-serif;
+
+  --font-page-title: 400 29px/1.05 var(--font-family); /* 頁面標題 */
+  --font-detail-title: 400 27px/1.1 var(--font-family); /* 詳情頁菜名 */
+  --font-sheet-title: 400 21px/1.15 var(--font-family); /* 底部 sheet 標題 */
+  --font-card-title: 600 17px/1.25 var(--font-family); /* 卡片內菜名（16–18px） */
+  --font-row: 600 15.5px/1.3 var(--font-family); /* 列主文字 */
+  --font-paragraph: 400 14.5px/1.7 var(--font-family); /* 內文段落 */
+  --font-form-input: 400 15px/1.4 var(--font-family); /* 表單 input 文字 */
+  --font-button: 700 14px/1 var(--font-family); /* 按鈕文字（13–15px） */
+  --font-button-sm: 600 12.5px/1 var(--font-family); /* 次要按鈕文字 */
+  --font-meta: 400 12px/1.4 var(--font-family); /* metadata、食材串 */
+  --font-section-label: 600 10.5px/1 var(--font-family); /* section 標籤本體 */
+  --section-label-spacing: 0.11em; /* section 標籤要另外加 text-transform:uppercase */
+  --font-chip: 600 11px/1 var(--font-family); /* chip（10.5–13px） */
+  --font-badge: 700 10.5px/1 var(--font-family); /* badge（10–10.5px） */
+
+  /* ---- 版面留白（README：左右 20px／頂部安全區＋32px／底部分頁列下方 28px；
+     垂直節奏 6/8/10/14/16/18/20/22px）。實際套用到各畫面時才會用到，
+     先在這裡定義好，畫面逐頁改版時直接取用。 ---- */
+  --page-padding-x: 20px;
+  --page-padding-top: calc(env(safe-area-inset-top, 0px) + 32px);
+  --tabbar-safe-bottom: 28px;
+  --rhythm-1: 6px;
+  --rhythm-2: 8px;
+  --rhythm-3: 10px;
+  --rhythm-4: 14px;
+  --rhythm-5: 16px;
+  --rhythm-6: 18px;
+  --rhythm-7: 20px;
+  --rhythm-8: 22px;
+
+  /* ======================================================================
+     舊版元件相容別名 —— 值全部改成引用上面的鼠尾草色票。
+     還沒照新設計改版的頁面繼續用這些名稱，會自動套上新色；
+     等該頁改版完成後這些別名就可以整條刪掉，不用一次全部搬。
+     ====================================================================== */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-2);
+
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-3);
+  --color-text-placeholder: var(--text-6);
+  --color-text-inverse: var(--on-primary);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--circle);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-dark);
+  --color-primary-soft: var(--primary-tint);
+
+  /* README 的畫面沒有定義「危險色」（刪除鈕在新設計裡是中性灰圖示，
+     真正的警示交給 ConfirmDialog），這裡挑一個跟鼠尾草色盤協調的
+     磚紅色，維持既有的刪除／錯誤語意用色。 */
+  --color-danger: #b4472f;
+  --color-danger-hover: #953a26;
+  --color-danger-soft: var(--accent-tint);
+
+  --color-warning: var(--accent);
+  --color-warning-soft: var(--accent-tint);
+
+  /* ---- 九色標籤色盤（舊版「食材分類 / 菜色分類雜湊上色」用，Tag 元件專用）
+     這次改版之後：
+       - 食材分類改用上面新的六色盤（--ing-cat-*）
+       - 菜色的 category / courseTypes / tags chip 改用固定語意色
+         （primary-tint / surface-3 / accent-tint 等），不再雜湊配色
+     這份九色盤只保留給還沒搬遷的舊頁面／舊資料相容用，之後個別畫面
+     改版完成、不再呼叫 colorForCategory / colorForLabel 之後即可整份移除。 ---- */
+  --tag-grey-bg: #eeece9;
+  --tag-grey-text: #6b6862;
+  --tag-brown-bg: #f1e5d8;
+  --tag-brown-text: #8b5e34;
+  --tag-orange-bg: #fbe4d0;
+  --tag-orange-text: #c0651e;
+  --tag-yellow-bg: #fbefc7;
+  --tag-yellow-text: #9c7a16;
+  --tag-green-bg: #deeae0;
+  --tag-green-text: #3f6b4b;
+  --tag-blue-bg: #dce7f0;
+  --tag-blue-text: #2e5e82;
+  --tag-purple-bg: #e8e1f0;
+  --tag-purple-text: #6a4a96;
+  --tag-pink-bg: #f5e0e8;
+  --tag-pink-text: #a44c74;
+  --tag-red-bg: #f5dedc;
+  --tag-red-text: #b4412f;
+
+  /* ---- 間距（4 的倍數尺度，舊版頁面沿用；新設計的 20px 版面留白／
+     6-22px 垂直節奏見上面的 --page-padding-x 等新 token） ---- */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -54,21 +189,8 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  /* ---- 圓角：依元件角色分派，不是全部套同一個值 ---- */
-  --radius-control: 12px;  /* 按鈕、輸入框 */
-  --radius-card: 16px;     /* 卡片、列表項 */
-  --radius-sheet: 20px;    /* 底部彈出的 Modal 上緣 */
-  --radius-pill: 999px;    /* 標籤、FAB、SegmentedControl 選項 */
-
-  /* ---- 陰影：只給「浮起於內容之上」的元件（FAB / Modal / Toast），
-     一般卡片用 border 表現層次，不疊加陰影 ---- */
-  --shadow-float: 0 6px 20px rgba(43, 42, 40, 0.16);
-  --shadow-toast: 0 4px 14px rgba(43, 42, 40, 0.22);
-
-  /* ---- 字級（系統字體，貼近 iOS 原生觀感） ---- */
-  --font-family: -apple-system, BlinkMacSystemFont, "PingFang TC",
-    "Helvetica Neue", sans-serif;
-
+  /* ---- 舊版字級 token（單一角色一組值，尚未改版的頁面在用；
+     新畫面請改用上面的 --font-page-title 等新 token） ---- */
   --font-title: 600 20px/1.3 var(--font-family);
   --font-subtitle: 600 17px/1.35 var(--font-family);
   --font-body: 400 15px/1.5 var(--font-family);
