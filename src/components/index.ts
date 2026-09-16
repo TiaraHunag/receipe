@@ -17,6 +17,7 @@ export * from './Modal/Modal';
 export * from './Modal/ConfirmDialog';
 export * from './EmptyState/EmptyState';
 export * from './Spinner/Spinner';
+export * from './Skeleton/Skeleton';
 export * from './Toast/ToastProvider';
 export * from './SegmentedControl/SegmentedControl';
 export * from './DateSwitcher/DateSwitcher';

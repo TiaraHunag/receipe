@@ -57,7 +57,7 @@ function parseDate(dateStr: string | undefined): Date {
 
 /** 新增流程分三步:先選餐別(早/午/晚),再選分類,最後勾選菜色。
  *  入口從原本「每餐各自一個 + 按鈕」合併成畫面右下角單一 FAB;
- *  點某一餐卡片的空白處會直接帶入該餐別,跳過選餐別那一步。 */
+ *  點某一餐卡片標題列的「+」會直接帶入該餐別,跳過選餐別那一步。 */
 type PickerState = {
   step: 'meal' | 'course' | 'dish';
   meal?: MealType;
@@ -239,22 +239,33 @@ function MenuDayPage() {
           return (
             <Card
               key={meal}
-              onClick={() => chooseMeal(meal)}
               style={{
                 padding: 'var(--space-4)',
                 marginBottom: 'var(--space-4)',
                 overflow: 'hidden',
-                cursor: 'pointer',
               }}
             >
               <div
                 style={{
-                  font: 'var(--font-subtitle)',
-                  color: 'var(--color-text)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                   marginBottom: 'var(--space-3)',
                 }}
               >
-                {MEAL_LABELS[meal]}
+                <div
+                  style={{
+                    font: 'var(--font-subtitle)',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  {MEAL_LABELS[meal]}
+                </div>
+                <IconButton
+                  icon="+"
+                  label={`新增到${MEAL_LABELS[meal]}`}
+                  onClick={() => chooseMeal(meal)}
+                />
               </div>
 
               {mealIsEmpty ? (

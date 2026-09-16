@@ -16,7 +16,7 @@ import {
   ShoppingListItem,
   ShoppingExtraItem,
 } from '../db';
-import { Card, DateSwitcher, Checkbox, Input, Button, Fab, SwipeableRow, Modal, EmptyState, Spinner, useToast } from '../components';
+import { Card, DateSwitcher, Checkbox, Input, Button, Fab, SwipeableRow, Modal, EmptyState, Skeleton, useToast } from '../components';
 import IngredientTag from '../components/IngredientTag';
 
 function formatDate(d: Date): string {
@@ -81,6 +81,48 @@ function ShoppingItemRow({ item, onToggleStock, muted }: ShoppingItemRowProps) {
         onChange={(e) => onToggleStock(item.name, e.target.checked)}
       />
     </div>
+  );
+}
+
+/** 需採買清單單一列骨架:貼近 ShoppingItemRow(食材標籤 + 用途文字 + 冰箱有勾選) */
+function ShoppingRowSkeleton() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 'var(--space-3)',
+        padding: 'var(--space-2) 0',
+        borderBottom: '1px solid var(--color-surface-sunken)',
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 }}>
+        <Skeleton width={72} height={22} radius="var(--radius-pill)" />
+        <Skeleton width={120} height={11} />
+      </div>
+      <Skeleton width={44} height={24} />
+    </div>
+  );
+}
+
+/** 首次載入骨架屏:貼近「需採買」+「冰箱已有」兩張卡片的外型,取代原本的轉圈圈 */
+function ShoppingListSkeleton() {
+  return (
+    <>
+      <Card style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+        <Skeleton width={90} height={15} style={{ marginBottom: 'var(--space-3)' }} />
+        {[0, 1, 2, 3].map((i) => (
+          <ShoppingRowSkeleton key={i} />
+        ))}
+      </Card>
+      <Card style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+        <Skeleton width={140} height={13} style={{ marginBottom: 'var(--space-3)' }} />
+        {[0, 1].map((i) => (
+          <ShoppingRowSkeleton key={i} />
+        ))}
+      </Card>
+    </>
   );
 }
 
@@ -231,9 +273,7 @@ function ShoppingListPage() {
       </h2>
 
       {loadingList ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-5) 0' }}>
-          <Spinner />
-        </div>
+        <ShoppingListSkeleton />
       ) : items.length === 0 ? (
         <EmptyState
           icon="📅"

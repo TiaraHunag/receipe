@@ -1,0 +1,21 @@
+.hitArea {
+    width: var(--tap-target);
+    height: var(--tap-target);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  
+  .dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: block;
+    box-sizing: border-box;
+    border-style: solid;
+  }

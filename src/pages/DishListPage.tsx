@@ -19,7 +19,7 @@ import {
   IconButton,
   EmptyState,
   Tag,
-  Spinner,
+  Skeleton,
   SegmentedControl,
   Modal,
   useToast,
@@ -67,6 +67,40 @@ interface Group {
   label: string;
   color: TagColorKey;
   dishes: Dish[];
+}
+
+/** 首次載入骨架屏:貼近「餐點分類」分組 + 橫向卡片列表的外型,取代原本的轉圈圈 */
+function DishListSkeleton() {
+  return (
+    <div style={{ padding: 'var(--space-4)', maxWidth: 480, margin: '0 auto', paddingBottom: 96 }}>
+      <div style={{ marginBottom: 'var(--space-2)' }}>
+        <Skeleton height={40} />
+      </div>
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <Skeleton height={44} />
+      </div>
+      {[0, 1].map((groupIdx) => (
+        <div key={groupIdx} style={{ marginBottom: 'var(--space-5)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              marginBottom: 'var(--space-2)',
+            }}
+          >
+            <Skeleton width={72} height={17} />
+            <Skeleton width={32} height={13} />
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            {[0, 1, 2].map((cardIdx) => (
+              <Skeleton key={cardIdx} width={136} height={108} radius="var(--radius-card)" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function DishListPage() {
@@ -217,11 +251,7 @@ function DishListPage() {
   );
 
   if (loading) {
-    return (
-      <div style={{ padding: 'var(--space-4)', display: 'flex', justifyContent: 'center' }}>
-        <Spinner />
-      </div>
-    );
+    return <DishListSkeleton />;
   }
 
   const todayStr = formatDate(new Date());
@@ -516,7 +546,7 @@ function DishListPage() {
                 marginBottom: 'var(--space-3)',
               }}
             >
-              ‹ 換一個餐別
+              ‹ 換一個分類
             </button>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
               {COURSE_ORDER.map((course) => (

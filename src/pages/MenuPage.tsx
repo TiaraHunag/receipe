@@ -14,7 +14,7 @@ import {
   WEEKDAY_LABELS,
   Dish,
 } from '../db';
-import { Card, DateSwitcher, Spinner, Tag } from '../components';
+import { Card, DateSwitcher, Skeleton, Tag } from '../components';
 import { COURSE_TAG_COLOR } from '../courseColors';
 
 const MEAL_LABELS: Record<MealType, string> = {
@@ -62,6 +62,55 @@ function flattenMeal(courses: MealCourses): MealItem[] {
     (courses[course] || []).forEach((dishId) => list.push({ dishId, course }));
   });
   return list;
+}
+
+/** 首次載入骨架屏:貼近「日期列 + 三餐欄位」表格外型,取代原本的轉圈圈 */
+function MenuWeekSkeleton() {
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '52px repeat(3, 1fr)',
+          padding: 'var(--space-2) var(--space-3)',
+          borderBottom: '1px solid var(--color-border)',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        <span />
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'center' }}>
+            <Skeleton width={28} height={12} />
+          </div>
+        ))}
+      </div>
+
+      {Array.from({ length: 7 }, (_, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '52px repeat(3, 1fr)',
+            padding: 'var(--space-2) var(--space-3)',
+            borderBottom: i < 6 ? '1px solid var(--color-border)' : 'none',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <Skeleton width={20} height={10} />
+            <Skeleton width={28} height={13} />
+          </div>
+          {[0, 1, 2].map((m) => (
+            <div key={m} style={{ display: 'flex', justifyContent: 'center' }}>
+              <Skeleton width={44} height={18} radius="var(--radius-pill)" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </Card>
+  );
 }
 
 function MenuPage() {
@@ -119,9 +168,7 @@ function MenuPage() {
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-5) 0' }}>
-          <Spinner />
-        </div>
+        <MenuWeekSkeleton />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div
