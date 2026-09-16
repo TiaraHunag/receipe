@@ -263,12 +263,13 @@ function IngredientManagementPage() {
 
           <div className={styles.newCategoryCard}>
             <div className={styles.newCategoryRow}>
-              <input
-                className={styles.newCategoryInput}
+              <Input
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCreateCategory())}
                 placeholder="新分類名稱,例如:蔬菜"
+                className={styles.newCategoryInput}
+                style={{ minHeight: 40 }}
               />
               {INGREDIENT_CATEGORY_COLORS.map((c) => (
                 <ColorDot

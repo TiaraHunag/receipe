@@ -175,16 +175,13 @@
   flex-wrap: wrap;
 }
 
-.newCategoryInput {
+.newCategoryRow > :first-child {
   flex: 1;
   min-width: 140px;
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: var(--radius-pill);
-  border: 1.5px solid var(--border-input);
-  background: var(--surface);
-  font: var(--font-form-input);
-  color: var(--text);
+}
+
+.newCategoryInput {
+  font-size: 13px;
 }
 
 .createCategoryBtn {

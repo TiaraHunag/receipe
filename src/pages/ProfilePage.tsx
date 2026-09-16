@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download, Upload, ChevronRight } from 'lucide-react';
 import {
-  exportDishesToJSON,
-  importDishesFromJSON,
+  exportAllDataToJSON,
+  importAllDataFromJSON,
   getWeekStartDay,
   setWeekStartDay,
   WEEKDAY_LABELS,
@@ -38,7 +38,7 @@ function ProfilePage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const json = await exportDishesToJSON();
+      const json = await exportAllDataToJSON();
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -72,8 +72,15 @@ function ProfilePage() {
     setImporting(true);
     try {
       const text = await file.text();
-      const count = await importDishesFromJSON(text);
-      showToast(`成功匯入 ${count} 筆資料`, 'success');
+      const summary = await importAllDataFromJSON(text);
+      const parts = [
+        `${summary.dishes} 道食譜`,
+        `${summary.menus} 天菜單`,
+        `${summary.categories} 個食材分類`,
+        `${summary.fridgeItems} 項冰箱庫存`,
+        `${summary.shoppingExtraItems} 項採買項目`,
+      ];
+      showToast(`匯入完成:${parts.join('、')}`, 'success', { duration: 3200 });
     } catch (err) {
       showToast('匯入失敗,請確認檔案格式是否正確:' + String(err), 'error');
     } finally {
@@ -150,7 +157,7 @@ function ProfilePage() {
       <ConfirmDialog
         open={!!pendingFile}
         title="匯入備份"
-        description="匯入會覆蓋內容相同(同一道菜)的資料,確定要繼續嗎?"
+        description="匯入會覆蓋內容相同的資料(同一道菜、同一天菜單、同一個食材分類等),涵蓋食譜、菜單規劃、食材分類、冰箱庫存與採買項目,確定要繼續嗎?"
         confirmLabel="匯入"
         onConfirm={runImport}
         onCancel={cancelImport}

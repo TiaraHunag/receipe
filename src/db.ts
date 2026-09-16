@@ -712,23 +712,80 @@ export async function clearCheckedShoppingExtraItems(): Promise<void> {
   await persistToStore();
 }
 
-export interface DishExport {
+// ---------------------------------------------------------------------------
+// 備份匯出/匯入
+// 涵蓋全部使用者資料:食譜(dishes)、菜單規劃(menus)、食材分類(ingredient_categories)、
+// 食材分類指派(ingredients_master.categoryId)、冰箱庫存(fridge_items)、
+// 其他採買項目(shopping_extra_items)、個人設定(settings,如一週起始日)。
+// version 1 是舊格式(只有 dishes),version 2 起涵蓋全部資料表;
+// 匯入時兩種格式都要能讀,新格式裡任一區塊缺漏也不影響其他區塊正常匯入。
+// ---------------------------------------------------------------------------
+
+interface RawMenuRow {
+  date: string;
+  breakfast: string;
+  lunch: string;
+  dinner: string;
+  updatedAt: string;
+}
+
+interface IngredientAssignmentRow {
+  name: string;
+  categoryId: string | null;
+}
+
+interface SettingRow {
+  key: string;
+  value: string;
+}
+
+export interface AllDataExport {
   version: number;
   exportedAt: string;
   dishes: Dish[];
+  menus: RawMenuRow[];
+  ingredientCategories: IngredientCategory[];
+  ingredientAssignments: IngredientAssignmentRow[];
+  fridgeItems: FridgeItem[];
+  shoppingExtraItems: ShoppingExtraItem[];
+  settings: SettingRow[];
 }
 
-export async function exportDishesToJSON(): Promise<string> {
+export interface ImportSummary {
+  dishes: number;
+  menus: number;
+  categories: number;
+  fridgeItems: number;
+  shoppingExtraItems: number;
+}
+
+export async function exportAllDataToJSON(): Promise<string> {
+  const database = await getDB();
   const dishes = await getAllDishes();
-  const payload: DishExport = {
-    version: 1,
+  const menusRes = await database.query('SELECT date, breakfast, lunch, dinner, updatedAt FROM menus;');
+  const categoriesRes = await database.query('SELECT id, name, color FROM ingredient_categories;');
+  const assignmentsRes = await database.query(
+    'SELECT name, categoryId FROM ingredients_master WHERE categoryId IS NOT NULL;'
+  );
+  const fridgeItems = await getFridgeItems();
+  const shoppingExtraItems = await getShoppingExtraItems();
+  const settingsRes = await database.query('SELECT key, value FROM settings;');
+
+  const payload: AllDataExport = {
+    version: 2,
     exportedAt: new Date().toISOString(),
     dishes,
+    menus: (menusRes.values || []) as RawMenuRow[],
+    ingredientCategories: (categoriesRes.values || []) as IngredientCategory[],
+    ingredientAssignments: (assignmentsRes.values || []) as IngredientAssignmentRow[],
+    fridgeItems,
+    shoppingExtraItems,
+    settings: (settingsRes.values || []) as SettingRow[],
   };
   return JSON.stringify(payload, null, 2);
 }
 
-export async function importDishesFromJSON(jsonText: string): Promise<number> {
+export async function importAllDataFromJSON(jsonText: string): Promise<ImportSummary> {
   const parsed = JSON.parse(jsonText);
   const dishes: Dish[] = Array.isArray(parsed) ? parsed : parsed.dishes;
   if (!Array.isArray(dishes)) {
@@ -736,6 +793,23 @@ export async function importDishesFromJSON(jsonText: string): Promise<number> {
   }
 
   const database = await getDB();
+  const summary: ImportSummary = { dishes: 0, menus: 0, categories: 0, fridgeItems: 0, shoppingExtraItems: 0 };
+
+  // 1) 食材分類要先匯入,dishes/assignments 的 categoryId 才有對應的分類可以參照
+  const categories: IngredientCategory[] = Array.isArray(parsed?.ingredientCategories)
+    ? parsed.ingredientCategories
+    : [];
+  for (const c of categories) {
+    if (!c?.id || !c?.name) continue;
+    await database.run(
+      `INSERT INTO ingredient_categories (id, name, color) VALUES (?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color;`,
+      [c.id, c.name, c.color]
+    );
+    summary.categories++;
+  }
+
+  // 2) 食譜(insertDish/updateDish 的邏輯這裡直接用原生 SQL 覆蓋,連帶把食材名稱補進 ingredients_master)
   for (const d of dishes) {
     await database.run(
       `INSERT OR REPLACE INTO dishes
@@ -760,7 +834,69 @@ export async function importDishesFromJSON(jsonText: string): Promise<number> {
       ]
     );
     await syncIngredientsToMaster(d.ingredients || []);
+    summary.dishes++;
   }
+
+  // 3) 食材分類指派(要排在 dishes 之後:上一步 syncIngredientsToMaster 只會在食材名稱
+  //    不存在時補一筆 categoryId=NULL 的資料,不會蓋掉這裡才要寫入的真正分類指派)
+  const assignments: IngredientAssignmentRow[] = Array.isArray(parsed?.ingredientAssignments)
+    ? parsed.ingredientAssignments
+    : [];
+  for (const a of assignments) {
+    if (!a?.name) continue;
+    await database.run(
+      `INSERT INTO ingredients_master (name, categoryId, inStock) VALUES (?, ?, 0)
+       ON CONFLICT(name) DO UPDATE SET categoryId = excluded.categoryId;`,
+      [a.name, a.categoryId ?? null]
+    );
+  }
+
+  // 4) 菜單規劃
+  const menus: RawMenuRow[] = Array.isArray(parsed?.menus) ? parsed.menus : [];
+  for (const m of menus) {
+    if (!m?.date) continue;
+    await database.run(
+      `INSERT INTO menus (date, breakfast, lunch, dinner, updatedAt) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(date) DO UPDATE SET breakfast = excluded.breakfast, lunch = excluded.lunch, dinner = excluded.dinner, updatedAt = excluded.updatedAt;`,
+      [m.date, m.breakfast ?? '{}', m.lunch ?? '{}', m.dinner ?? '{}', m.updatedAt || new Date().toISOString()]
+    );
+    summary.menus++;
+  }
+
+  // 5) 冰箱庫存
+  const fridgeItems: FridgeItem[] = Array.isArray(parsed?.fridgeItems) ? parsed.fridgeItems : [];
+  for (const f of fridgeItems) {
+    if (!f?.name) continue;
+    await database.run('INSERT OR IGNORE INTO fridge_items (id, name, createdAt) VALUES (?, ?, ?);', [
+      f.id || crypto.randomUUID(),
+      f.name,
+      f.createdAt || new Date().toISOString(),
+    ]);
+    summary.fridgeItems++;
+  }
+
+  // 6) 其他採買項目
+  const extras: ShoppingExtraItem[] = Array.isArray(parsed?.shoppingExtraItems) ? parsed.shoppingExtraItems : [];
+  for (const s of extras) {
+    if (!s?.id || !s?.name) continue;
+    await database.run(
+      `INSERT INTO shopping_extra_items (id, name, checked, createdAt) VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, checked = excluded.checked;`,
+      [s.id, s.name, s.checked ? 1 : 0, s.createdAt || new Date().toISOString()]
+    );
+    summary.shoppingExtraItems++;
+  }
+
+  // 7) 個人設定(例如一週起始日)
+  const settings: SettingRow[] = Array.isArray(parsed?.settings) ? parsed.settings : [];
+  for (const s of settings) {
+    if (!s?.key) continue;
+    await database.run(
+      `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value;`,
+      [s.key, s.value]
+    );
+  }
+
   await persistToStore();
-  return dishes.length;
+  return summary;
 }
