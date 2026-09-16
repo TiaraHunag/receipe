@@ -84,8 +84,25 @@ function IngredientManagementPage() {
     setFridgeItems((prev) => prev.filter((it) => it.name !== name));
     try {
       await removeFridgeItem(name);
+      // 高頻輕量操作(用完了勾掉),不跳確認彈窗打斷手感,
+      // 改用「已移除 + 5 秒內可復原」的 Toast,跟分類刪除(較高風險,用 ConfirmDialog)區分開。
+      showToast(`${name} 已從冰箱移除`, 'success', {
+        actionLabel: '復原',
+        duration: 5000,
+        onAction: async () => {
+          try {
+            await addFridgeItem(name);
+            const fridge = await getFridgeItems();
+            setFridgeItems(fridge);
+          } catch (err) {
+            showToast('復原失敗:' + String(err), 'error');
+          }
+        },
+      });
     } catch (err) {
       showToast('移除失敗:' + String(err), 'error');
+      const fridge = await getFridgeItems();
+      setFridgeItems(fridge);
     }
   };
 

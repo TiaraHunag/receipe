@@ -11,7 +11,10 @@
 }
 
 .toast {
-  padding: var(--space-3) var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
   border-radius: var(--radius-pill);
   font: var(--font-label);
   color: var(--toast-fg);
@@ -19,6 +22,29 @@
   box-shadow: var(--shadow-toast);
   text-align: center;
   animation: slideUpToast var(--transition-base);
+}
+
+.action {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--primary-tint);
+  font: var(--font-label);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toast:has(.action) {
+  padding-right: var(--space-2);
 }
 
 /* README 的 Toast 一律是同一種深色底，不依 info/success/error 分色；
