@@ -1,8 +1,10 @@
 // ============================================================================
-// src/db.ts (完整覆蓋 — 新增 fridge_items 真實庫存表,取代 ingredients_master.inStock)
+// src/db.ts (完整覆蓋 — 照片改存本機檔案,資料庫只存路徑;新增/更新/刪除食譜、
+// 匯出/匯入都要跟著處理照片檔案的寫入/清理,詳見各函式內的說明)
 // ============================================================================
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { Capacitor } from '@capacitor/core';
+import { savePhotoFile, deletePhotoFile, readPhotoAsDataUrl } from './photoStorage';
 
 const sqlite = new SQLiteConnection(CapacitorSQLite);
 let db: SQLiteDBConnection | null = null;
@@ -267,12 +269,48 @@ export async function insertDish(
   return id;
 }
 
+/** 從一筆 dishes 原始 row 取出目前用到的所有照片相對路徑(封面 + 內容區塊)。 */
+function extractPhotoPaths(row: { hasRecipe?: unknown; recipeCoverPhotoPath?: string; recipeContent?: string }): Set<string> {
+  const paths = new Set<string>();
+  if (!row?.hasRecipe) return paths;
+  if (row.recipeCoverPhotoPath) paths.add(row.recipeCoverPhotoPath);
+  try {
+    const content = row.recipeContent ? JSON.parse(row.recipeContent) : [];
+    (content as { type?: string; path?: string }[]).forEach((b) => {
+      if (b?.type === 'image' && b.path) paths.add(b.path);
+    });
+  } catch {
+    // 內容解析失敗就當作沒有照片,不影響其他清理
+  }
+  return paths;
+}
+
+/** 從送進 insertDish/updateDish 的 payload 取出目前用到的所有照片相對路徑。 */
+function extractPayloadPhotoPaths(data: Pick<Dish, 'recipe'>): Set<string> {
+  const paths = new Set<string>();
+  if (data.recipe?.coverPhotoPath) paths.add(data.recipe.coverPhotoPath);
+  data.recipe?.content?.forEach((b) => {
+    if (b.type === 'image' && b.path) paths.add(b.path);
+  });
+  return paths;
+}
+
 export async function updateDish(
   id: string,
   data: Omit<Dish, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<void> {
   const database = await getDB();
   const now = new Date().toISOString();
+
+  // 照片現在是本機獨立檔案,更新前先記下舊資料用到哪些路徑,
+  // 更新完之後拿新資料實際還在用的路徑比對,不再用到的舊檔案就清掉,
+  // 不然編輯時換照片、刪步驟圖都會留下孤兒檔案越積越多。
+  const oldRes = await database.query(
+    'SELECT hasRecipe, recipeCoverPhotoPath, recipeContent FROM dishes WHERE id = ?;',
+    [id]
+  );
+  const oldPaths = extractPhotoPaths((oldRes.values || [])[0] || {});
+
   await database.run(
     `UPDATE dishes SET
       name = ?, category = ?, ingredients = ?, prepAhead = ?, source = ?, notes = ?,
@@ -297,12 +335,28 @@ export async function updateDish(
   );
   await syncIngredientsToMaster(data.ingredients);
   await persistToStore();
+
+  const newPaths = extractPayloadPhotoPaths(data);
+  for (const p of oldPaths) {
+    if (!newPaths.has(p)) await deletePhotoFile(p);
+  }
 }
 
 export async function deleteDish(id: string): Promise<void> {
   const database = await getDB();
+  const res = await database.query(
+    'SELECT hasRecipe, recipeCoverPhotoPath, recipeContent FROM dishes WHERE id = ?;',
+    [id]
+  );
+  const photoPaths = extractPhotoPaths((res.values || [])[0] || {});
+
   await database.run('DELETE FROM dishes WHERE id = ?;', [id]);
   await persistToStore();
+
+  // 照片是獨立檔案,不會因為刪 SQLite 那筆資料就自動消失,要另外清掉。
+  for (const p of photoPaths) {
+    await deletePhotoFile(p);
+  }
 }
 
 export async function getAllCategories(): Promise<string[]> {
@@ -759,9 +813,28 @@ export interface ImportSummary {
   shoppingExtraItems: number;
 }
 
+/** 匯出用:把一筆 dish 的封面/步驟圖路徑換成內嵌的 base64 data URL,
+ *  這樣 JSON 備份檔本身就是完整的,換裝置用 JSON 還原時照片也在。
+ *  只影響匯出時產生的這份「複本」,不會動到資料庫裡實際存的路徑。 */
+async function embedPhotosForExport(dish: Dish): Promise<Dish> {
+  if (!dish.hasRecipe || !dish.recipe) return dish;
+  const coverPhotoPath = dish.recipe.coverPhotoPath
+    ? (await readPhotoAsDataUrl(dish.recipe.coverPhotoPath)) || dish.recipe.coverPhotoPath
+    : dish.recipe.coverPhotoPath;
+  const content = await Promise.all(
+    dish.recipe.content.map(async (block) => {
+      if (block.type !== 'image' || !block.path) return block;
+      const embedded = await readPhotoAsDataUrl(block.path);
+      return embedded ? { ...block, path: embedded } : block;
+    })
+  );
+  return { ...dish, recipe: { ...dish.recipe, coverPhotoPath, content } };
+}
+
 export async function exportAllDataToJSON(): Promise<string> {
   const database = await getDB();
-  const dishes = await getAllDishes();
+  const rawDishes = await getAllDishes();
+  const dishes = await Promise.all(rawDishes.map(embedPhotosForExport));
   const menusRes = await database.query('SELECT date, breakfast, lunch, dinner, updatedAt FROM menus;');
   const categoriesRes = await database.query('SELECT id, name, color FROM ingredient_categories;');
   const assignmentsRes = await database.query(
@@ -783,6 +856,21 @@ export async function exportAllDataToJSON(): Promise<string> {
     settings: (settingsRes.values || []) as SettingRow[],
   };
   return JSON.stringify(payload, null, 2);
+}
+
+/** 匯入用:把內嵌的 base64(data: 開頭)寫成本機新檔案,回傳新路徑;
+ *  已經是路徑格式(沒有 data: 前綴)就直接沿用,不重新寫檔。
+ *  寫檔失敗就當作沒有照片,不中斷整筆資料的匯入。 */
+async function resolvePhotoForImport(value: string | undefined): Promise<string> {
+  if (!value) return '';
+  if (!value.startsWith('data:')) return value;
+  const base64 = value.split(',')[1] || '';
+  if (!base64) return '';
+  try {
+    return await savePhotoFile(base64);
+  } catch {
+    return '';
+  }
 }
 
 export async function importAllDataFromJSON(jsonText: string): Promise<ImportSummary> {
@@ -809,8 +897,26 @@ export async function importAllDataFromJSON(jsonText: string): Promise<ImportSum
     summary.categories++;
   }
 
-  // 2) 食譜(insertDish/updateDish 的邏輯這裡直接用原生 SQL 覆蓋,連帶把食材名稱補進 ingredients_master)
+  // 2) 食譜。照片欄位如果是內嵌的 base64(data: 開頭,匯出時嵌進去的,或舊版
+  //    架構直接把 dataURL 存進資料庫時代留下的)就寫成本機新檔案,換回路徑;
+  //    已經是路徑格式就直接沿用。同一個 id 如果原本就有資料(覆蓋匯入),
+  //    完成後把舊資料用到、新資料沒再用到的照片檔案清掉,避免孤兒檔案越積越多。
   for (const d of dishes) {
+    const oldRes = await database.query(
+      'SELECT hasRecipe, recipeCoverPhotoPath, recipeContent FROM dishes WHERE id = ?;',
+      [d.id]
+    );
+    const oldPaths = extractPhotoPaths((oldRes.values || [])[0] || {});
+
+    const coverPhotoPath = await resolvePhotoForImport(d.recipe?.coverPhotoPath);
+    const content = d.recipe?.content
+      ? await Promise.all(
+          d.recipe.content.map(async (block) =>
+            block.type === 'image' ? { ...block, path: await resolvePhotoForImport(block.path) } : block
+          )
+        )
+      : [];
+
     await database.run(
       `INSERT OR REPLACE INTO dishes
         (id, name, category, ingredients, prepAhead, source, notes, hasRecipe, recipeCoverPhotoPath, recipeSourceUrl, recipeContent, courseTypes, tags, createdAt, updatedAt)
@@ -824,9 +930,9 @@ export async function importAllDataFromJSON(jsonText: string): Promise<ImportSum
         d.source || '',
         d.notes || '',
         d.hasRecipe ? 1 : 0,
-        d.recipe?.coverPhotoPath || '',
+        coverPhotoPath,
         d.recipe?.sourceUrl || '',
-        JSON.stringify(d.recipe?.content || []),
+        JSON.stringify(content),
         JSON.stringify(d.courseTypes || []),
         JSON.stringify(d.tags || []),
         d.createdAt || new Date().toISOString(),
@@ -834,6 +940,16 @@ export async function importAllDataFromJSON(jsonText: string): Promise<ImportSum
       ]
     );
     await syncIngredientsToMaster(d.ingredients || []);
+
+    const newPaths = new Set<string>();
+    if (coverPhotoPath) newPaths.add(coverPhotoPath);
+    content.forEach((b) => {
+      if (b.type === 'image' && b.path) newPaths.add(b.path);
+    });
+    for (const p of oldPaths) {
+      if (!newPaths.has(p)) await deletePhotoFile(p);
+    }
+
     summary.dishes++;
   }
 

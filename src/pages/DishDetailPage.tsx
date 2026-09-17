@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Pencil, Link2, Trash2, Clock } from 'lucide-react';
 import { getDishById, deleteDish, getFridgeItems, getIngredientCategoryMap, Dish, IngredientWithCategory, COURSE_LABELS } from '../db';
 import { resolveIngredientCategoryColor } from '../ingredientCategoryColors';
-import { ConfirmDialog, Spinner, useToast, useAddToMenu } from '../components';
+import { ConfirmDialog, LocalPhoto, Spinner, useToast, useAddToMenu } from '../components';
 import styles from './DishDetailPage.module.css';
 
 function linkify(text: string): (string | JSX.Element)[] {
@@ -79,7 +79,7 @@ function DishDetailPage() {
     <div className={styles.page}>
       <div className={styles.cover}>
         {dish.recipe?.coverPhotoPath ? (
-          <img src={dish.recipe.coverPhotoPath} alt="" className={styles.coverImg} />
+          <LocalPhoto path={dish.recipe.coverPhotoPath} className={styles.coverImg} />
         ) : (
           <span className={styles.coverPill}>沒有封面照片</span>
         )}
@@ -192,7 +192,7 @@ function DishDetailPage() {
                   {linkify(block.text || '')}
                 </p>
               ) : (
-                <img key={i} src={block.path} alt="" className={styles.recipeImage} />
+                <LocalPhoto key={i} path={block.path} className={styles.recipeImage} />
               )
             )}
           </div>

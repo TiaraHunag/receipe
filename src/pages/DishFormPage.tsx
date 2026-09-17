@@ -18,6 +18,7 @@ import {
   COURSE_LABELS,
   COURSE_ORDER,
 } from '../db';
+import { compressAndSavePhoto, deletePhotoFile } from '../photoStorage';
 import { INGREDIENT_CATEGORY_COLORS } from '../ingredientCategoryColors';
 import {
   Input,
@@ -26,6 +27,7 @@ import {
   Toggle,
   ColorDot,
   ConfirmDialog,
+  LocalPhoto,
   useToast,
 } from '../components';
 import styles from './DishFormPage.module.css';
@@ -34,15 +36,6 @@ interface ContentBlock {
   type: 'text' | 'image';
   text?: string;
   path?: string;
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 }
 
 function DishFormPage() {
@@ -73,6 +66,7 @@ function DishFormPage() {
   const [coverPhotoPath, setCoverPhotoPath] = useState('');
   const [content, setContent] = useState<ContentBlock[]>([]);
   const [recipeSourceUrl, setRecipeSourceUrl] = useState('');
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [loadingData, setLoadingData] = useState(isEditMode);
@@ -94,10 +88,25 @@ function DishFormPage() {
   const guardActiveRef = useRef(false);
   const justSavedRef = useRef(false);
 
-  // ---- 封面/內文圖片挑選(瀏覽器/WKWebView 內建的相簿選擇器,暫不接 Capacitor Camera) ----
+  // ---- 封面/內文圖片挑選(瀏覽器/WKWebView 內建的相簿選擇器,選完會壓縮後存進
+  //      本機檔案系統,表單狀態只存路徑) ----
   const coverInputRef = useRef<HTMLInputElement>(null);
   const blockImageInputRef = useRef<HTMLInputElement>(null);
   const pendingBlockIndexRef = useRef<number | null>(null);
+
+  // 記錄「這次進表單編輯之前,資料庫裡就已經存在」的照片路徑(新增模式是空集合)。
+  // 這次編輯過程中新寫入、但最後沒被實際存檔用到的照片檔案(換照片時被取代掉的、
+  // 或整個表單直接放棄不儲存的),都要主動清掉,不然會變成孤兒檔案越積越多;
+  // 反之,屬於這個集合裡的路徑代表「本來就在資料庫」,不管這次編輯有沒有存檔
+  // 都不能提前刪除,交給 updateDish/deleteDish 在真正異動資料庫時處理。
+  const originalPathsRef = useRef<Set<string>>(new Set());
+
+  /** 刪掉「這次編輯過程中新寫入、但不是原本就在資料庫裡」的照片檔案。 */
+  const deleteIfSessionOwned = (path?: string) => {
+    if (path && !originalPathsRef.current.has(path)) {
+      deletePhotoFile(path);
+    }
+  };
 
   const serializeFormState = () =>
     JSON.stringify({
@@ -154,6 +163,13 @@ function DishFormPage() {
         setCoverPhotoPath(data.recipe?.coverPhotoPath || '');
         setContent(data.recipe?.content || []);
         setRecipeSourceUrl(data.recipe?.sourceUrl || '');
+
+        const existingPaths = new Set<string>();
+        if (data.recipe?.coverPhotoPath) existingPaths.add(data.recipe.coverPhotoPath);
+        (data.recipe?.content || []).forEach((b) => {
+          if (b.type === 'image' && b.path) existingPaths.add(b.path);
+        });
+        originalPathsRef.current = existingPaths;
       }
       setLoadingData(false);
     };
@@ -213,6 +229,12 @@ function DishFormPage() {
 
   const handleConfirmLeave = () => {
     setShowLeaveConfirm(false);
+    // 放棄這次編輯:目前表單上還留著的照片,只要不是原本就在資料庫裡的,
+    // 都是這次編輯過程中新寫入卻沒存檔的孤兒檔案,一併清掉。
+    deleteIfSessionOwned(coverPhotoPath);
+    content.forEach((b) => {
+      if (b.type === 'image' && b.path) deleteIfSessionOwned(b.path);
+    });
     navigate(-1);
   };
 
@@ -284,17 +306,25 @@ function DishFormPage() {
   const updateBlockText = (index: number, value: string) => {
     setContent((prev) => prev.map((b, i) => (i === index ? { ...b, text: value } : b)));
   };
-  const removeBlock = (index: number) => setContent(content.filter((_, i) => i !== index));
+  const removeBlock = (index: number) => {
+    const block = content[index];
+    if (block?.type === 'image' && block.path) deleteIfSessionOwned(block.path);
+    setContent(content.filter((_, i) => i !== index));
+  };
 
   const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    setPhotoBusy(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setCoverPhotoPath(dataUrl);
+      const newPath = await compressAndSavePhoto(file);
+      deleteIfSessionOwned(coverPhotoPath);
+      setCoverPhotoPath(newPath);
     } catch {
       showToast('讀取圖片失敗,請再試一次', 'error');
+    } finally {
+      setPhotoBusy(false);
     }
   };
 
@@ -309,11 +339,16 @@ function DishFormPage() {
     e.target.value = '';
     pendingBlockIndexRef.current = null;
     if (!file || index === null) return;
+    setPhotoBusy(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setContent((prev) => prev.map((b, i) => (i === index ? { ...b, path: dataUrl } : b)));
+      const newPath = await compressAndSavePhoto(file);
+      const oldPath = content[index]?.path;
+      deleteIfSessionOwned(oldPath);
+      setContent((prev) => prev.map((b, i) => (i === index ? { ...b, path: newPath } : b)));
     } catch {
       showToast('讀取圖片失敗,請再試一次', 'error');
+    } finally {
+      setPhotoBusy(false);
     }
   };
 
@@ -632,16 +667,18 @@ function DishFormPage() {
               type="button"
               className={styles.coverUpload}
               onClick={() => coverInputRef.current?.click()}
+              disabled={photoBusy}
             >
               {coverPhotoPath ? (
                 <>
-                  <img src={coverPhotoPath} alt="" className={styles.coverPreview} />
+                  <LocalPhoto path={coverPhotoPath} className={styles.coverPreview} />
                   <span
                     role="button"
                     tabIndex={-1}
                     className={styles.coverRemoveBtn}
                     onClick={(e) => {
                       e.stopPropagation();
+                      deleteIfSessionOwned(coverPhotoPath);
                       setCoverPhotoPath('');
                     }}
                     aria-label="移除封面照片"
@@ -652,7 +689,7 @@ function DishFormPage() {
               ) : (
                 <>
                   <Camera size={16} strokeWidth={2.5} style={{ marginRight: 6 }} />
-                  ＋ 封面照片
+                  {photoBusy ? '處理中…' : '＋ 封面照片'}
                 </>
               )}
             </button>
@@ -685,13 +722,18 @@ function DishFormPage() {
                       style={{ minHeight: 70 }}
                     />
                   ) : (
-                    <button type="button" className={styles.blockImageBox} onClick={() => openBlockFilePicker(i)}>
+                    <button
+                      type="button"
+                      className={styles.blockImageBox}
+                      onClick={() => openBlockFilePicker(i)}
+                      disabled={photoBusy}
+                    >
                       {block.path ? (
-                        <img src={block.path} alt="" className={styles.blockImagePreview} />
+                        <LocalPhoto path={block.path} className={styles.blockImagePreview} />
                       ) : (
                         <>
                           <ImageIcon size={16} strokeWidth={2.5} style={{ marginRight: 6 }} />
-                          點擊選擇圖片
+                          {photoBusy ? '處理中…' : '點擊選擇圖片'}
                         </>
                       )}
                     </button>
