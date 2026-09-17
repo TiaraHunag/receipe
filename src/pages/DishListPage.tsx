@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, Clock } from 'lucide-react';
-import { getAllDishes, Dish, COURSE_LABELS, COURSE_ORDER } from '../db';
-import { Chip, EmptyState, SegmentedControl, Skeleton, useAddToMenu } from '../components';
+import { getAllDishes, getIngredientCategoryMap, Dish, IngredientWithCategory, COURSE_LABELS, COURSE_ORDER } from '../db';
+import { resolveIngredientCategoryColor } from '../ingredientCategoryColors';
+import { Chip, EmptyState, LocalPhoto, SegmentedControl, Skeleton, useAddToMenu } from '../components';
 import styles from './DishListPage.module.css';
 
 type GroupMode = 'category' | 'course';
@@ -58,6 +59,7 @@ function DishListPage() {
 
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categoryMap, setCategoryMap] = useState<Record<string, IngredientWithCategory>>({});
 
   const [query, setQuery] = useState('');
   const [groupMode, setGroupMode] = useState<GroupMode>('course');
@@ -65,8 +67,9 @@ function DishListPage() {
 
   useEffect(() => {
     const load = async () => {
-      const allDishes = await getAllDishes();
+      const [allDishes, map] = await Promise.all([getAllDishes(), getIngredientCategoryMap()]);
       setDishes(allDishes);
+      setCategoryMap(map);
       setLoading(false);
     };
     load();
@@ -217,6 +220,13 @@ function DishListPage() {
 
             {group.dishes.map((dish) => (
               <div key={dish.id} className={styles.row}>
+                <Link to={`/dish/${dish.id}`} className={styles.thumbLink}>
+                  {dish.recipe?.coverPhotoPath ? (
+                    <LocalPhoto path={dish.recipe.coverPhotoPath} className={styles.thumbImg} />
+                  ) : (
+                    <div className={styles.thumbPlaceholder} />
+                  )}
+                </Link>
                 <Link to={`/dish/${dish.id}`} className={styles.rowMain}>
                   <div className={styles.rowTitleLine}>
                     <span className={styles.dishName}>{dish.name}</span>
@@ -233,7 +243,18 @@ function DishListPage() {
                   </div>
 
                   {dish.ingredients.length > 0 && (
-                    <div className={styles.ingredientLine}>{dish.ingredients.join('、')}</div>
+                    <div className={styles.ingredientLine}>
+                      {dish.ingredients.map((ing, i) => (
+                        <span key={ing} className={styles.ingredientItem}>
+                          <span
+                            className={styles.ingredientDot}
+                            style={{ background: resolveIngredientCategoryColor(categoryMap[ing]?.color) }}
+                          />
+                          {ing}
+                          {i < dish.ingredients.length - 1 ? '、' : ''}
+                        </span>
+                      ))}
+                    </div>
                   )}
 
                   {(dish.category.length > 0 || dish.courseTypes.length > 0 || dish.tags.length > 0) && (

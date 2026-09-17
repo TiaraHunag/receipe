@@ -134,6 +134,27 @@
   border-bottom: 1px solid var(--line);
 }
 
+.thumbLink {
+  flex: none;
+  padding-top: 12px;
+  display: block;
+}
+
+.thumbImg {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+}
+
+.thumbPlaceholder {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--primary-tint);
+}
+
 .rowMain {
   flex: 1;
   min-width: 0;
@@ -167,6 +188,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ingredientItem {
+  display: inline;
+}
+
+.ingredientDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
 }
 
 .chipRow {
